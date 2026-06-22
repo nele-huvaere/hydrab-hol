@@ -32,10 +32,10 @@ hydrab-hol/
 **DO NOT build cells one by one.** Never use notebook_add_cell or notebook_edit_cell.
 
 **What you SHOULD do when this skill is invoked:**
-1. Run ALL setup SQL directly using snowflake_sql_execute (steps 1-7 below)
-2. Verify each step worked with validation queries
+1. Run ALL setup SQL directly using snowflake_sql_execute (steps 1-9 below)
+2. This includes: infrastructure setup, Git repo creation, notebook execution in container runtime, and dashboard deployment
 3. Report success/failure for each step
-4. Tell the user to open the Git Workspace (one click — instructions below)
+4. Tell the user the dashboard URL and how to open the Git Workspace for interactive exploration
 
 ## Full Installation (run ALL steps automatically)
 
@@ -173,109 +173,88 @@ After creating the repo, verify files are accessible:
 LS @HYDRAB_HOL_REPO/branches/main/notebooks/;
 ```
 
-## Validation & End-to-End Test (run ALL of this after install)
+### Step 8: Create Notebook Project and run notebooks in container runtime
 
-After steps 1-7 complete, validate the full pipeline by running the key queries from each notebook. This proves everything works without the user having to run the notebooks manually.
+Create a Notebook Project Object (NPO) from the Git repo stage, then execute each notebook to validate the full pipeline end-to-end:
 
-### Test Notebook 02 — Data Exploration
 ```sql
--- Verify BRONZE data accessible
-SELECT 'BRONZE.OPPORTUNITY' as tbl, COUNT(*) as rows FROM BRONZE.OPPORTUNITY
-UNION ALL SELECT 'BRONZE.ASSET', COUNT(*) FROM BRONZE.ASSET
-UNION ALL SELECT 'BRONZE.ODOS_EVENTS', COUNT(*) FROM BRONZE.ODOS_EVENTS
-UNION ALL SELECT 'BRONZE.DEFECT_EVENT', COUNT(*) FROM BRONZE.DEFECT_EVENT
-UNION ALL SELECT 'BRONZE.DELIVERY_TRACKING', COUNT(*) FROM BRONZE.DELIVERY_TRACKING;
+-- Create NPO from the Git repository stage
+CREATE NOTEBOOK PROJECT IF NOT EXISTS IDENTIFIER($user_db || '.PUBLIC.HYDRAB_HOL_PROJECT')
+  FROM '@' || $user_db || '.PUBLIC.HYDRAB_HOL_REPO/branches/main/';
+```
+
+Now execute the notebooks sequentially. Each runs in a container runtime:
+
+```sql
+-- Run notebook 02: Explore data (validates BRONZE access)
+EXECUTE NOTEBOOK PROJECT IDENTIFIER($user_db || '.PUBLIC.HYDRAB_HOL_PROJECT')
+  MAIN_FILE = 'notebooks/02_explore_data.ipynb'
+  COMPUTE_POOL = 'HYDRAB_HOL_POOL'
+  QUERY_WAREHOUSE = 'HYDRAB_HOL_WH'
+  RUNTIME = 'V2.2-CPU-PY3.11';
 ```
 
 ```sql
--- Verify VIN join between Salesforce and Odos works
-SELECT COUNT(DISTINCT a."Chassis_Number__c") AS overlapping_vins
-FROM BRONZE.ASSET a
-INNER JOIN (SELECT DISTINCT RAW:vin::STRING AS vin FROM BRONZE.ODOS_EVENTS) o
-  ON a."Chassis_Number__c" = o.vin;
-```
-
-### Test Notebook 03 — SILVER & GOLD layers
-```sql
--- Verify SILVER tables have data
-SELECT 'SILVER.VEHICLES_SILVER' as tbl, COUNT(*) as rows FROM SILVER.VEHICLES_SILVER
-UNION ALL SELECT 'SILVER.TELEMETRY_SILVER', COUNT(*) FROM SILVER.TELEMETRY_SILVER
-UNION ALL SELECT 'SILVER.DEFECTS_SILVER', COUNT(*) FROM SILVER.DEFECTS_SILVER;
+-- Run notebook 03: Build GOLD layer (Semantic View, Cortex Agent)
+EXECUTE NOTEBOOK PROJECT IDENTIFIER($user_db || '.PUBLIC.HYDRAB_HOL_PROJECT')
+  MAIN_FILE = 'notebooks/03_build_gold.ipynb'
+  COMPUTE_POOL = 'HYDRAB_HOL_POOL'
+  QUERY_WAREHOUSE = 'HYDRAB_HOL_WH'
+  RUNTIME = 'V2.2-CPU-PY3.11';
 ```
 
 ```sql
--- Verify GOLD views
-SELECT 'GOLD.DIM_VEHICLE' as tbl, COUNT(*) as rows FROM GOLD.DIM_VEHICLE
-UNION ALL SELECT 'GOLD.FCT_LATEST_TELEMETRY', COUNT(*) FROM GOLD.FCT_LATEST_TELEMETRY
-UNION ALL SELECT 'GOLD.FCT_DEFECT', COUNT(*) FROM GOLD.FCT_DEFECT;
+-- Run notebook 04: Deploy dashboard (creates SPCS service)
+EXECUTE NOTEBOOK PROJECT IDENTIFIER($user_db || '.PUBLIC.HYDRAB_HOL_PROJECT')
+  MAIN_FILE = 'notebooks/04_deploy_dashboard.ipynb'
+  COMPUTE_POOL = 'HYDRAB_HOL_POOL'
+  QUERY_WAREHOUSE = 'HYDRAB_HOL_WH'
+  RUNTIME = 'V2.2-CPU-PY3.11';
 ```
 
-### Test Notebook 04 — Deploy Dashboard
+If any notebook execution fails, report the error and continue with the next one.
+
+### Step 9: Get dashboard URL and validate
+
+After notebook 04 runs (it creates the SPCS service), get the dashboard endpoint:
 ```sql
--- Create the SPCS service from pre-built image
 USE SCHEMA IDENTIFIER($user_db || '.GOLD');
-
-CREATE SERVICE IF NOT EXISTS DASHBOARD_SERVICE
-  IN COMPUTE POOL HYDRAB_HOL_POOL
-  FROM SPECIFICATION $$
-  spec:
-    containers:
-    - name: dashboard
-      image: /HYDRAB_HOL_SHARED/PUBLIC/IMAGE_REPO/hydrab-dashboard:v1
-      resources:
-        requests:
-          cpu: 0.5
-          memory: 512M
-        limits:
-          cpu: 1
-          memory: 1G
-    endpoints:
-    - name: dashboard
-      port: 3000
-      public: true
-  $$
-  MIN_INSTANCES = 1
-  MAX_INSTANCES = 1;
-```
-
-After creating the service, wait for it to start (poll up to 3 times with 20-second waits):
-```sql
--- Check service status (run until READY or RUNNING)
-SELECT SYSTEM$GET_SERVICE_STATUS('DASHBOARD_SERVICE');
-```
-
-Then get the public endpoint:
-```sql
 SHOW ENDPOINTS IN SERVICE DASHBOARD_SERVICE;
 ```
 
-The `ingress_url` from the output is the dashboard URL. Tell the user to open it.
+The `ingress_url` from the output is the live dashboard URL.
+
+Also run final validation:
+```sql
+SELECT 'BRONZE.ASSET' as tbl, COUNT(*) as rows FROM BRONZE.ASSET
+UNION ALL SELECT 'SILVER.VEHICLES_SILVER', COUNT(*) FROM SILVER.VEHICLES_SILVER
+UNION ALL SELECT 'GOLD.DIM_VEHICLE', COUNT(*) FROM GOLD.DIM_VEHICLE
+UNION ALL SELECT 'GOLD.FCT_LATEST_TELEMETRY', COUNT(*) FROM GOLD.FCT_LATEST_TELEMETRY;
+```
 
 ## Final Report
 
-After ALL validation and deployment, report to the user:
+After ALL steps complete, report to the user:
 
-1. **Data Pipeline** — Row counts for BRONZE, SILVER, GOLD layers
-2. **VIN Overlap** — Number of vehicles with both CRM and telemetry data
-3. **Dashboard URL** — The public URL for the deployed React dashboard (from SHOW ENDPOINTS)
-4. **Notebooks** — Tell the user:
+1. **Data Pipeline** — Row counts for BRONZE, SILVER, GOLD layers (from validation query)
+2. **Notebook Results** — Which notebooks ran successfully / failed
+3. **Dashboard URL** — The public URL for the deployed React dashboard
+4. **How to explore interactively:**
 
-> **Everything is running! Here's what's ready:**
+> **Everything is deployed and tested!**
 >
-> **Dashboard:** [paste the ingress_url] — open this in a new tab
+> **Dashboard:** [paste the ingress_url] — open this in your browser
 >
-> **Notebooks** (for deeper exploration):
+> **Interactive Notebooks** (to explore the data yourself):
 > 1. Go to **Workspaces** → **+ Add new** → **From Git repository**
-> 2. Select repo: `HYDRAB_HOL_<USER>.PUBLIC.HYDRAB_HOL_REPO`
+> 2. Select: `HYDRAB_HOL_<USER>.PUBLIC.HYDRAB_HOL_REPO`
 > 3. Authentication: **Public repository** → **Create**
 >
-> All notebooks will appear:
-> - `notebooks/02_explore_data.ipynb` — Explore the data interactively
-> - `notebooks/03_build_gold.ipynb` — Build Semantic View & Cortex Agent
-> - `notebooks/04_deploy_dashboard.ipynb` — Dashboard already deployed above
-> - `notebooks/05_dbt_production.ipynb` — dbt production deployment
-
-- Do NOT tell the user to manually upload notebooks — they connect via Git
+> Notebooks in your workspace:
+> - `02_explore_data.ipynb` — Explore Salesforce + Odos data
+> - `03_build_gold.ipynb` — Semantic View & Cortex Agent
+> - `04_deploy_dashboard.ipynb` — Dashboard (already deployed)
+> - `05_dbt_production.ipynb` — dbt production deployment
 
 ## Phase 2: Extend with CoCo Desktop
 

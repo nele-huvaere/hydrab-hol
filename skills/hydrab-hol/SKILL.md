@@ -32,10 +32,10 @@ hydrab-hol/
 **DO NOT build cells one by one.** Never use notebook_add_cell or notebook_edit_cell.
 
 **What you SHOULD do when this skill is invoked:**
-1. Run ALL setup SQL directly using snowflake_sql_execute (steps 1-6 below)
+1. Run ALL setup SQL directly using snowflake_sql_execute (steps 1-7 below)
 2. Verify each step worked with validation queries
 3. Report success/failure for each step
-4. Tell the user to create a Workspace from the Git repository (instructions below)
+4. Tell the user to open the Git Workspace (one click — instructions below)
 
 ## Full Installation (run ALL steps automatically)
 
@@ -156,6 +156,23 @@ SELECT * FROM SILVER.DEFECTS_SILVER;
 ALTER ACCOUNT SET CORTEX_ENABLED_CROSS_REGION = 'ANY_REGION';
 ```
 
+### Step 7: Create Git Repository for notebooks
+```sql
+USE DATABASE IDENTIFIER($user_db);
+USE SCHEMA PUBLIC;
+
+CREATE GIT REPOSITORY IF NOT EXISTS HYDRAB_HOL_REPO
+  ORIGIN = 'https://github.com/nele-huvaere/hydrab-hol.git'
+  API_INTEGRATION = HYDRAB_GIT_INTEGRATION;
+
+ALTER GIT REPOSITORY HYDRAB_HOL_REPO FETCH;
+```
+
+After creating the repo, verify files are accessible:
+```sql
+LS @HYDRAB_HOL_REPO/branches/main/notebooks/;
+```
+
 ## Validation (run after install)
 
 After all steps complete, run these validation queries and report the results:
@@ -174,15 +191,14 @@ Report to the user:
 - Row counts from validation
 - **NEXT STEP — Open the notebooks in Workspaces.** Tell the user:
 
-> **Your Snowflake environment is ready!** Now open the notebooks:
+> **Your environment is ready! Open your notebooks:**
 > 1. Go to **Workspaces** (top-left navigation)
 > 2. Click **+ Add new** → **From Git repository**
-> 3. Paste this URL: `https://github.com/nele-huvaere/hydrab-hol.git`
-> 4. Select API Integration: **HYDRAB_GIT_INTEGRATION**
-> 5. Authentication: **Public repository**
-> 6. Click **Create**
+> 3. Your repo `HYDRAB_HOL_<USER>.PUBLIC.HYDRAB_HOL_REPO` is already created — select it
+> 4. Authentication: **Public repository**
+> 5. Click **Create**
 >
-> All notebooks will appear in your workspace:
+> All notebooks will appear in your workspace automatically:
 > - `notebooks/02_explore_data.ipynb` — Explore Salesforce + Odos data
 > - `notebooks/03_build_gold.ipynb` — Build Semantic View & Cortex Agent
 > - `notebooks/04_deploy_dashboard.ipynb` — Deploy React dashboard to SPCS

@@ -173,37 +173,107 @@ After creating the repo, verify files are accessible:
 LS @HYDRAB_HOL_REPO/branches/main/notebooks/;
 ```
 
-## Validation (run after install)
+## Validation & End-to-End Test (run ALL of this after install)
 
-After all steps complete, run these validation queries and report the results:
+After steps 1-7 complete, validate the full pipeline by running the key queries from each notebook. This proves everything works without the user having to run the notebooks manually.
 
+### Test Notebook 02 — Data Exploration
 ```sql
--- Check row counts
+-- Verify BRONZE data accessible
 SELECT 'BRONZE.OPPORTUNITY' as tbl, COUNT(*) as rows FROM BRONZE.OPPORTUNITY
 UNION ALL SELECT 'BRONZE.ASSET', COUNT(*) FROM BRONZE.ASSET
 UNION ALL SELECT 'BRONZE.ODOS_EVENTS', COUNT(*) FROM BRONZE.ODOS_EVENTS
-UNION ALL SELECT 'SILVER.VEHICLES_SILVER', COUNT(*) FROM SILVER.VEHICLES_SILVER
-UNION ALL SELECT 'GOLD.DIM_VEHICLE', COUNT(*) FROM GOLD.DIM_VEHICLE;
+UNION ALL SELECT 'BRONZE.DEFECT_EVENT', COUNT(*) FROM BRONZE.DEFECT_EVENT
+UNION ALL SELECT 'BRONZE.DELIVERY_TRACKING', COUNT(*) FROM BRONZE.DELIVERY_TRACKING;
 ```
 
-Report to the user:
-- Which steps succeeded/failed
-- Row counts from validation
-- **NEXT STEP — Open the notebooks in Workspaces.** Tell the user:
+```sql
+-- Verify VIN join between Salesforce and Odos works
+SELECT COUNT(DISTINCT a."Chassis_Number__c") AS overlapping_vins
+FROM BRONZE.ASSET a
+INNER JOIN (SELECT DISTINCT RAW:vin::STRING AS vin FROM BRONZE.ODOS_EVENTS) o
+  ON a."Chassis_Number__c" = o.vin;
+```
 
-> **Your environment is ready! Open your notebooks:**
-> 1. Go to **Workspaces** (top-left navigation)
-> 2. Click **+ Add new** → **From Git repository**
-> 3. Your repo `HYDRAB_HOL_<USER>.PUBLIC.HYDRAB_HOL_REPO` is already created — select it
-> 4. Authentication: **Public repository**
-> 5. Click **Create**
+### Test Notebook 03 — SILVER & GOLD layers
+```sql
+-- Verify SILVER tables have data
+SELECT 'SILVER.VEHICLES_SILVER' as tbl, COUNT(*) as rows FROM SILVER.VEHICLES_SILVER
+UNION ALL SELECT 'SILVER.TELEMETRY_SILVER', COUNT(*) FROM SILVER.TELEMETRY_SILVER
+UNION ALL SELECT 'SILVER.DEFECTS_SILVER', COUNT(*) FROM SILVER.DEFECTS_SILVER;
+```
+
+```sql
+-- Verify GOLD views
+SELECT 'GOLD.DIM_VEHICLE' as tbl, COUNT(*) as rows FROM GOLD.DIM_VEHICLE
+UNION ALL SELECT 'GOLD.FCT_LATEST_TELEMETRY', COUNT(*) FROM GOLD.FCT_LATEST_TELEMETRY
+UNION ALL SELECT 'GOLD.FCT_DEFECT', COUNT(*) FROM GOLD.FCT_DEFECT;
+```
+
+### Test Notebook 04 — Deploy Dashboard
+```sql
+-- Create the SPCS service from pre-built image
+USE SCHEMA IDENTIFIER($user_db || '.GOLD');
+
+CREATE SERVICE IF NOT EXISTS DASHBOARD_SERVICE
+  IN COMPUTE POOL HYDRAB_HOL_POOL
+  FROM SPECIFICATION $$
+  spec:
+    containers:
+    - name: dashboard
+      image: /HYDRAB_HOL_SHARED/PUBLIC/IMAGE_REPO/hydrab-dashboard:v1
+      resources:
+        requests:
+          cpu: 0.5
+          memory: 512M
+        limits:
+          cpu: 1
+          memory: 1G
+    endpoints:
+    - name: dashboard
+      port: 3000
+      public: true
+  $$
+  MIN_INSTANCES = 1
+  MAX_INSTANCES = 1;
+```
+
+After creating the service, wait for it to start (poll up to 3 times with 20-second waits):
+```sql
+-- Check service status (run until READY or RUNNING)
+SELECT SYSTEM$GET_SERVICE_STATUS('DASHBOARD_SERVICE');
+```
+
+Then get the public endpoint:
+```sql
+SHOW ENDPOINTS IN SERVICE DASHBOARD_SERVICE;
+```
+
+The `ingress_url` from the output is the dashboard URL. Tell the user to open it.
+
+## Final Report
+
+After ALL validation and deployment, report to the user:
+
+1. **Data Pipeline** — Row counts for BRONZE, SILVER, GOLD layers
+2. **VIN Overlap** — Number of vehicles with both CRM and telemetry data
+3. **Dashboard URL** — The public URL for the deployed React dashboard (from SHOW ENDPOINTS)
+4. **Notebooks** — Tell the user:
+
+> **Everything is running! Here's what's ready:**
 >
-> All notebooks will appear in your workspace automatically:
-> - `notebooks/02_explore_data.ipynb` — Explore Salesforce + Odos data
+> **Dashboard:** [paste the ingress_url] — open this in a new tab
+>
+> **Notebooks** (for deeper exploration):
+> 1. Go to **Workspaces** → **+ Add new** → **From Git repository**
+> 2. Select repo: `HYDRAB_HOL_<USER>.PUBLIC.HYDRAB_HOL_REPO`
+> 3. Authentication: **Public repository** → **Create**
+>
+> All notebooks will appear:
+> - `notebooks/02_explore_data.ipynb` — Explore the data interactively
 > - `notebooks/03_build_gold.ipynb` — Build Semantic View & Cortex Agent
-> - `notebooks/04_deploy_dashboard.ipynb` — Deploy React dashboard to SPCS
->
-> The `react-app/` source is also there for CoCo Desktop extension later.
+> - `notebooks/04_deploy_dashboard.ipynb` — Dashboard already deployed above
+> - `notebooks/05_dbt_production.ipynb` — dbt production deployment
 
 - Do NOT tell the user to manually upload notebooks — they connect via Git
 

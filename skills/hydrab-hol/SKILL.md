@@ -27,15 +27,22 @@ hydrab-hol/
 
 ## CRITICAL INSTRUCTIONS FOR THE AGENT
 
-**DO NOT create or edit notebooks.** The notebooks are already complete `.ipynb` files in the `notebooks/` folder. They are ready to open and run as-is.
+**DO NOT create or edit notebooks.** The notebooks are already complete `.ipynb` files in the Git repository.
 
 **DO NOT build cells one by one.** Never use notebook_add_cell or notebook_edit_cell.
 
+**DO NOT create files in the workspace.** Never create .yaml files, cortex_project folders, agent definitions, or semantic view files in the workspace. ALL objects (agents, semantic views, etc.) must be created via SQL using snowflake_sql_execute.
+
+**DO NOT create or modify workspaces.** Do not create workspace files or folders. The user will open a Git workspace themselves.
+
+**DO NOT create Cortex Agents or Semantic Views during installation.** Those are built interactively in notebook 03. The installation only sets up the data pipeline (BRONZE → SILVER → GOLD) and deploys the dashboard.
+
+**ONLY use snowflake_sql_execute.** Do not use any notebook tools, file creation tools, or workspace tools. Every action must be a SQL statement.
+
 **What you SHOULD do when this skill is invoked:**
-1. Run ALL setup SQL directly using snowflake_sql_execute (steps 1-9 below)
-2. This includes: infrastructure setup, Git repo creation, notebook execution in container runtime, and dashboard deployment
-3. Report success/failure for each step
-4. Tell the user the dashboard URL and how to open the Git Workspace for interactive exploration
+1. Run ALL setup SQL directly using snowflake_sql_execute (steps 1-8 below) — NOTHING ELSE
+2. Report success/failure for each step
+3. Tell the user the dashboard URL and how to open the Git Workspace for interactive exploration
 
 ## Full Installation (run ALL steps automatically)
 
@@ -173,61 +180,53 @@ After creating the repo, verify files are accessible:
 LS @HYDRAB_HOL_REPO/branches/main/notebooks/;
 ```
 
-### Step 8: Create Notebook Project and run notebooks in container runtime
+### Step 8: Deploy dashboard and validate end-to-end
 
-Create a Notebook Project Object (NPO) from the Git repo stage, then execute each notebook to validate the full pipeline end-to-end:
-
-```sql
--- Create NPO from the Git repository stage
-CREATE NOTEBOOK PROJECT IF NOT EXISTS IDENTIFIER($user_db || '.PUBLIC.HYDRAB_HOL_PROJECT')
-  FROM '@' || $user_db || '.PUBLIC.HYDRAB_HOL_REPO/branches/main/';
-```
-
-Now execute the notebooks sequentially. Each runs in a container runtime:
+Create the SPCS service and verify all layers have data:
 
 ```sql
--- Run notebook 02: Explore data (validates BRONZE access)
-EXECUTE NOTEBOOK PROJECT IDENTIFIER($user_db || '.PUBLIC.HYDRAB_HOL_PROJECT')
-  MAIN_FILE = 'notebooks/02_explore_data.ipynb'
-  COMPUTE_POOL = 'HYDRAB_HOL_POOL'
-  QUERY_WAREHOUSE = 'HYDRAB_HOL_WH'
-  RUNTIME = 'V2.2-CPU-PY3.11';
-```
-
-```sql
--- Run notebook 03: Build GOLD layer (Semantic View, Cortex Agent)
-EXECUTE NOTEBOOK PROJECT IDENTIFIER($user_db || '.PUBLIC.HYDRAB_HOL_PROJECT')
-  MAIN_FILE = 'notebooks/03_build_gold.ipynb'
-  COMPUTE_POOL = 'HYDRAB_HOL_POOL'
-  QUERY_WAREHOUSE = 'HYDRAB_HOL_WH'
-  RUNTIME = 'V2.2-CPU-PY3.11';
-```
-
-```sql
--- Run notebook 04: Deploy dashboard (creates SPCS service)
-EXECUTE NOTEBOOK PROJECT IDENTIFIER($user_db || '.PUBLIC.HYDRAB_HOL_PROJECT')
-  MAIN_FILE = 'notebooks/04_deploy_dashboard.ipynb'
-  COMPUTE_POOL = 'HYDRAB_HOL_POOL'
-  QUERY_WAREHOUSE = 'HYDRAB_HOL_WH'
-  RUNTIME = 'V2.2-CPU-PY3.11';
-```
-
-If any notebook execution fails, report the error and continue with the next one.
-
-### Step 9: Get dashboard URL and validate
-
-After notebook 04 runs (it creates the SPCS service), get the dashboard endpoint:
-```sql
+-- Deploy the React dashboard
 USE SCHEMA IDENTIFIER($user_db || '.GOLD');
+
+CREATE SERVICE IF NOT EXISTS DASHBOARD_SERVICE
+  IN COMPUTE POOL HYDRAB_HOL_POOL
+  FROM SPECIFICATION $$
+  spec:
+    containers:
+    - name: dashboard
+      image: /HYDRAB_HOL_SHARED/PUBLIC/IMAGE_REPO/hydrab-dashboard:v1
+      resources:
+        requests:
+          cpu: 0.5
+          memory: 512M
+        limits:
+          cpu: 1
+          memory: 1G
+    endpoints:
+    - name: dashboard
+      port: 3000
+      public: true
+  $$
+  MIN_INSTANCES = 1
+  MAX_INSTANCES = 1;
+```
+
+Wait for the service (poll up to 3 times with 15-second waits):
+```sql
+SELECT SYSTEM$GET_SERVICE_STATUS('DASHBOARD_SERVICE');
+```
+
+Get the dashboard URL:
+```sql
 SHOW ENDPOINTS IN SERVICE DASHBOARD_SERVICE;
 ```
 
-The `ingress_url` from the output is the live dashboard URL.
-
-Also run final validation:
+Run final validation:
 ```sql
 SELECT 'BRONZE.ASSET' as tbl, COUNT(*) as rows FROM BRONZE.ASSET
+UNION ALL SELECT 'BRONZE.ODOS_EVENTS', COUNT(*) FROM BRONZE.ODOS_EVENTS
 UNION ALL SELECT 'SILVER.VEHICLES_SILVER', COUNT(*) FROM SILVER.VEHICLES_SILVER
+UNION ALL SELECT 'SILVER.TELEMETRY_SILVER', COUNT(*) FROM SILVER.TELEMETRY_SILVER
 UNION ALL SELECT 'GOLD.DIM_VEHICLE', COUNT(*) FROM GOLD.DIM_VEHICLE
 UNION ALL SELECT 'GOLD.FCT_LATEST_TELEMETRY', COUNT(*) FROM GOLD.FCT_LATEST_TELEMETRY;
 ```
@@ -236,25 +235,25 @@ UNION ALL SELECT 'GOLD.FCT_LATEST_TELEMETRY', COUNT(*) FROM GOLD.FCT_LATEST_TELE
 
 After ALL steps complete, report to the user:
 
-1. **Data Pipeline** — Row counts for BRONZE, SILVER, GOLD layers (from validation query)
-2. **Notebook Results** — Which notebooks ran successfully / failed
-3. **Dashboard URL** — The public URL for the deployed React dashboard
-4. **How to explore interactively:**
+1. **Data Pipeline** — Row counts for BRONZE, SILVER, GOLD layers
+2. **Dashboard URL** — The public ingress_url (tell user to open in browser)
+3. **How to explore interactively:**
 
-> **Everything is deployed and tested!**
+> **Everything is deployed!**
 >
 > **Dashboard:** [paste the ingress_url] — open this in your browser
 >
 > **Interactive Notebooks** (to explore the data yourself):
 > 1. Go to **Workspaces** → **+ Add new** → **From Git repository**
-> 2. Select: `HYDRAB_HOL_<USER>.PUBLIC.HYDRAB_HOL_REPO`
-> 3. Authentication: **Public repository** → **Create**
+> 2. Paste URL: `https://github.com/nele-huvaere/hydrab-hol.git`
+> 3. API Integration: **HYDRAB_GIT_INTEGRATION**
+> 4. Authentication: **Public repository** → **Create**
 >
 > Notebooks in your workspace:
-> - `02_explore_data.ipynb` — Explore Salesforce + Odos data
-> - `03_build_gold.ipynb` — Semantic View & Cortex Agent
-> - `04_deploy_dashboard.ipynb` — Dashboard (already deployed)
-> - `05_dbt_production.ipynb` — dbt production deployment
+> - `notebooks/02_explore_data.ipynb` — Explore Salesforce + Odos data
+> - `notebooks/03_build_gold.ipynb` — Semantic View & Cortex Agent
+> - `notebooks/04_deploy_dashboard.ipynb` — Dashboard (already deployed)
+> - `notebooks/05_dbt_production.ipynb` — dbt production deployment
 
 ## Phase 2: Extend with CoCo Desktop
 

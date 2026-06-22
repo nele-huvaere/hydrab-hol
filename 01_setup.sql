@@ -5,9 +5,14 @@
 -- Creates everything each attendee needs:
 --   - one database HYDRAB_HOL_<USER>
 --   - schemas: BRONZE, SILVER, GOLD, PUBLIC
---   - BRONZE views pointing to shared data
+--   - BRONZE tables (copied from shared data, enabling change tracking)
 --   - warehouse
 --   - internal stages for notebooks and dbt files
+--
+-- WHY COPY? Dynamic Tables require change tracking on their sources.
+-- Shared/imported databases don't support change tracking.
+-- We copy once into native tables so Dynamic Tables work.
+-- In the trial account, data is already native — this script still works.
 -- ============================================================================
 
 USE ROLE ACCOUNTADMIN;
@@ -27,8 +32,6 @@ BEGIN
     EXECUTE IMMEDIATE 'CREATE SCHEMA IF NOT EXISTS ' || :hol_db || '.BRONZE';
     EXECUTE IMMEDIATE 'CREATE SCHEMA IF NOT EXISTS ' || :hol_db || '.SILVER';
     EXECUTE IMMEDIATE 'CREATE SCHEMA IF NOT EXISTS ' || :hol_db || '.GOLD';
-
-    -- Stages for notebook deployment and dbt files
     EXECUTE IMMEDIATE 'CREATE STAGE IF NOT EXISTS ' || :hol_db || '.PUBLIC.NOTEBOOK_STAGE DIRECTORY=(ENABLE=TRUE)';
     EXECUTE IMMEDIATE 'CREATE STAGE IF NOT EXISTS ' || :hol_db || '.PUBLIC.DBT_STAGE DIRECTORY=(ENABLE=TRUE)';
 
@@ -40,26 +43,33 @@ $$;
 SET HOL_USER = (SELECT REGEXP_REPLACE(UPPER(CURRENT_USER()), '[^A-Z0-9_]', '_'));
 SET HOL_DB   = (SELECT CONCAT('HYDRAB_HOL_', $HOL_USER));
 USE DATABASE IDENTIFIER($HOL_DB);
-
--- 3. Create BRONZE views pointing to shared data
 USE SCHEMA BRONZE;
 
-CREATE OR REPLACE VIEW OPPORTUNITY AS
-  SELECT * FROM BRONZE.SALESFORCE.OPPORTUNITY;
-
-CREATE OR REPLACE VIEW ASSET AS
+-- 3. Copy BRONZE data into native tables (enables change tracking for Dynamic Tables)
+-- Source: BRONZE database (either shared/imported or native in trial account)
+CREATE OR REPLACE TABLE ASSET AS
   SELECT * FROM BRONZE.SALESFORCE.ASSET;
 
-CREATE OR REPLACE VIEW ODOS_EVENTS AS
+CREATE OR REPLACE TABLE OPPORTUNITY AS
+  SELECT * FROM BRONZE.SALESFORCE.OPPORTUNITY;
+
+CREATE OR REPLACE TABLE ODOS_EVENTS AS
   SELECT * FROM BRONZE.ODOS.EVENTS;
 
-CREATE OR REPLACE VIEW DEFECT_EVENT AS
+CREATE OR REPLACE TABLE DEFECT_EVENT AS
   SELECT * FROM BRONZE.SALESFORCE.DEFECT_EVENT__C;
 
-CREATE OR REPLACE VIEW DELIVERY_TRACKING AS
+CREATE OR REPLACE TABLE DELIVERY_TRACKING AS
   SELECT * FROM BRONZE.SALESFORCE.DELIVERY_TRACKING__C;
 
--- 4. Confirmation
+-- 4. Enable change tracking on BRONZE tables (required for Dynamic Tables)
+ALTER TABLE ASSET SET CHANGE_TRACKING = TRUE;
+ALTER TABLE ODOS_EVENTS SET CHANGE_TRACKING = TRUE;
+ALTER TABLE DEFECT_EVENT SET CHANGE_TRACKING = TRUE;
+
+-- 5. Confirmation
 SELECT $HOL_USER AS YOUR_NAMESPACE,
        $HOL_DB   AS YOUR_DATABASE,
+       (SELECT COUNT(*) FROM BRONZE.ASSET) AS ASSET_ROWS,
+       (SELECT COUNT(*) FROM BRONZE.ODOS_EVENTS) AS TELEMETRY_ROWS,
        'Run 02_deploy_notebooks.sql next' AS NEXT_STEP;

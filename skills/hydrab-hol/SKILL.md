@@ -1,317 +1,246 @@
 ---
 name: hydrab-hol
-description: "HydraB Power Vehicle 360 Hands-On Lab. Use when the user wants to run the HydraB lab, set up their environment, explore fleet data, build a Cortex Agent, or deploy the dashboard. Triggers: hydrab, hol, hands-on lab, vehicle 360, fleet dashboard, electric bus."
+description: "HydraB Power Vehicle 360 Hands-On Lab. Use when the user wants to run the HydraB lab, set up their environment, explore fleet data, build a Cortex Agent, deploy the dashboard, or run the dbt project. Triggers: hydrab, hol, hands-on lab, vehicle 360, fleet dashboard, electric bus."
+tools:
+  - snowflake_sql_execute
 ---
 
 # HydraB Power — Vehicle 360 Hands-On Lab
 
-You are guiding a participant through the HydraB Power Hands-On Lab. This lab builds a unified fleet intelligence platform for an electric bus manufacturer using Snowflake.
+## When to use
 
-## Lab Overview
+Activate this skill whenever the user wants to install or run the HydraB Power Hands-On Lab. Trigger phrases: "run the HydraB HOL", "install the HydraB lab", "set up HydraB", "$hydrab-hol", or simply uploading this folder.
 
-HydraB Power manufactures zero-emission buses for public transit operators across the UK & Ireland. This lab combines their Salesforce CRM data (sales pipeline, vehicle master data, delivery tracking) with Odos Telemetry API data (GPS, battery SOC, temperature, speed) into a single Snowflake platform — and builds an AI-powered dashboard on top.
+## What this skill produces (per attendee)
 
-## What's In This Folder
+| Object | Location | Notes |
+|--------|----------|-------|
+| Database | `HYDRAB_HOL_<USER>` | One per attendee, isolated |
+| Schemas | `BRONZE`, `SILVER`, `GOLD`, `PUBLIC` | inside user DB |
+| BRONZE views | 5 views over shared data | Opportunity, Asset, Odos_Events, Defect_Event, Delivery_Tracking |
+| SILVER Dynamic Tables | 3 auto-refreshing tables | Vehicles, Telemetry, Defects (5-min lag) |
+| GOLD views | 3 analytics views | DIM_VEHICLE, FCT_LATEST_TELEMETRY, FCT_DEFECT |
+| Semantic View | `GOLD.FLEET_SEMANTIC` | Business-friendly model over GOLD |
+| Cortex Agent | `GOLD.FLEET_AGENT` | AI fleet intelligence assistant |
+| Dashboard Service | `GOLD.DASHBOARD_SERVICE` | React app on SPCS |
+| dbt Project | `GOLD.HYDRAB_FLEET_DBT` | Production-grade transforms |
+| Notebook Project | `PUBLIC.HYDRAB_PROJECT` | All 5 notebooks executable |
 
-```
-hydrab-hol/
-├── notebooks/
-│   ├── 01_setup.ipynb            — Creates your per-user database & schemas
-│   ├── 02_explore_data.ipynb     — Explore Salesforce + Odos data
-│   ├── 03_build_gold.ipynb       — Dynamic Tables, Semantic View, Cortex Agent
-│   └── 04_deploy_dashboard.ipynb — Deploy React app to SPCS
-├── react-app/                    — Full Next.js dashboard source
-├── spec/                         — SPCS service specification
-└── skills/hydrab-hol/SKILL.md    — This file (instructions for CoCo)
-```
+No collisions between attendees — every object is inside their own database.
 
-## CRITICAL INSTRUCTIONS FOR THE AGENT
+## CRITICAL INSTRUCTIONS
 
-**DO NOT create or edit notebooks.** The notebooks are already complete `.ipynb` files in the Git repository.
+**ONLY use snowflake_sql_execute.** Every action is a SQL statement.
 
-**DO NOT build cells one by one.** Never use notebook_add_cell or notebook_edit_cell.
+**DO NOT** create or edit notebooks, workspace files, .yaml files, or cortex_project folders.
 
-**DO NOT create files in the workspace.** Never create .yaml files, cortex_project folders, agent definitions, or semantic view files in the workspace. ALL objects (agents, semantic views, etc.) must be created via SQL using snowflake_sql_execute.
+**DO NOT** create legacy notebook objects (CREATE NOTEBOOK).
 
-**DO NOT create or modify workspaces.** Do not create workspace files or folders. The user will open a Git workspace themselves.
+**DO NOT** modify any source files in this pack.
 
-**DO NOT create Cortex Agents or Semantic Views during installation.** Those are built interactively in notebook 03. The installation only sets up the data pipeline (BRONZE → SILVER → GOLD) and deploys the dashboard.
+If a step fails, report the error verbatim. Do not retry with modifications.
 
-**ONLY use snowflake_sql_execute.** Do not use any notebook tools, file creation tools, or workspace tools. Every action must be a SQL statement.
+## Instructions (run in this exact order)
 
-**What you SHOULD do when this skill is invoked:**
-1. Run ALL setup SQL directly using snowflake_sql_execute (steps 1-8 below) — NOTHING ELSE
-2. Report success/failure for each step
-3. Tell the user the dashboard URL and how to open the Git Workspace for interactive exploration
+Execute these 4 scripts in order. Each script's SQL is provided below — run each statement via `snowflake_sql_execute`.
 
-## Full Installation (run ALL steps automatically)
+### Step 1 — Run 01_setup.sql
 
-Execute these SQL statements in order using snowflake_sql_execute. Run them ALL without asking — this is a one-shot install.
+Creates the per-user database, schemas, BRONZE views, and stages.
 
-### Step 1: Create per-user database and schemas
 ```sql
 USE ROLE ACCOUNTADMIN;
-SET user_db = 'HYDRAB_HOL_' || CURRENT_USER();
-CREATE DATABASE IF NOT EXISTS IDENTIFIER($user_db);
-USE DATABASE IDENTIFIER($user_db);
-CREATE SCHEMA IF NOT EXISTS BRONZE;
-CREATE SCHEMA IF NOT EXISTS SILVER;
-CREATE SCHEMA IF NOT EXISTS GOLD;
-CREATE SCHEMA IF NOT EXISTS SYNTHETIC;
-```
-
-### Step 2: Create warehouse
-```sql
-CREATE WAREHOUSE IF NOT EXISTS HYDRAB_HOL_WH
-  WAREHOUSE_SIZE = 'X-SMALL'
-  AUTO_SUSPEND = 60
-  AUTO_RESUME = TRUE
-  INITIALLY_SUSPENDED = FALSE;
 USE WAREHOUSE HYDRAB_HOL_WH;
+
+EXECUTE IMMEDIATE
+$$
+DECLARE
+    hol_user STRING;
+    hol_db   STRING;
+BEGIN
+    SELECT REGEXP_REPLACE(UPPER(CURRENT_USER()), '[^A-Z0-9_]', '_') INTO hol_user;
+    hol_db := 'HYDRAB_HOL_' || :hol_user;
+
+    EXECUTE IMMEDIATE 'CREATE DATABASE IF NOT EXISTS ' || :hol_db;
+    EXECUTE IMMEDIATE 'CREATE SCHEMA IF NOT EXISTS ' || :hol_db || '.BRONZE';
+    EXECUTE IMMEDIATE 'CREATE SCHEMA IF NOT EXISTS ' || :hol_db || '.SILVER';
+    EXECUTE IMMEDIATE 'CREATE SCHEMA IF NOT EXISTS ' || :hol_db || '.GOLD';
+    EXECUTE IMMEDIATE 'CREATE STAGE IF NOT EXISTS ' || :hol_db || '.PUBLIC.NOTEBOOK_STAGE DIRECTORY=(ENABLE=TRUE)';
+    EXECUTE IMMEDIATE 'CREATE STAGE IF NOT EXISTS ' || :hol_db || '.PUBLIC.DBT_STAGE DIRECTORY=(ENABLE=TRUE)';
+
+    RETURN 'Setup complete: ' || :hol_db;
+END;
+$$;
+
+SET HOL_DB = (SELECT CONCAT('HYDRAB_HOL_', REGEXP_REPLACE(UPPER(CURRENT_USER()), '[^A-Z0-9_]', '_')));
+USE DATABASE IDENTIFIER($HOL_DB);
+USE SCHEMA BRONZE;
+
+CREATE OR REPLACE VIEW OPPORTUNITY AS SELECT * FROM BRONZE.SALESFORCE.OPPORTUNITY;
+CREATE OR REPLACE VIEW ASSET AS SELECT * FROM BRONZE.SALESFORCE.ASSET;
+CREATE OR REPLACE VIEW ODOS_EVENTS AS SELECT * FROM BRONZE.ODOS.EVENTS;
+CREATE OR REPLACE VIEW DEFECT_EVENT AS SELECT * FROM BRONZE.SALESFORCE.DEFECT_EVENT__C;
+CREATE OR REPLACE VIEW DELIVERY_TRACKING AS SELECT * FROM BRONZE.SALESFORCE.DELIVERY_TRACKING__C;
 ```
 
-### Step 3: Link BRONZE shared data
-The admin has already imported the BRONZE database from the inbound share.
-Create views in the user's BRONZE schema pointing to it:
+NOTE: If the shared `BRONZE` database doesn't exist, tell the user: "The shared BRONZE database isn't available. Ask the lab facilitator to run admin_setup.sql first."
+
+### Step 2 — Run 02_deploy_notebooks.sql
+
+PUTs notebook and dbt files to stages, creates the Notebook Project Object.
+
 ```sql
-USE SCHEMA IDENTIFIER($user_db || '.BRONZE');
+USE DATABASE IDENTIFIER($HOL_DB);
 
-CREATE OR REPLACE VIEW OPPORTUNITY AS
-  SELECT * FROM BRONZE.SALESFORCE.OPPORTUNITY;
+PUT 'file://notebooks/01_explore_data.ipynb' @PUBLIC.NOTEBOOK_STAGE/notebooks/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+PUT 'file://notebooks/02_build_silver_gold.ipynb' @PUBLIC.NOTEBOOK_STAGE/notebooks/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+PUT 'file://notebooks/03_cortex_agent.ipynb' @PUBLIC.NOTEBOOK_STAGE/notebooks/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+PUT 'file://notebooks/04_deploy_dashboard.ipynb' @PUBLIC.NOTEBOOK_STAGE/notebooks/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+PUT 'file://notebooks/05_dbt_production.ipynb' @PUBLIC.NOTEBOOK_STAGE/notebooks/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
 
-CREATE OR REPLACE VIEW ASSET AS
-  SELECT * FROM BRONZE.SALESFORCE.ASSET;
-
-CREATE OR REPLACE VIEW ODOS_EVENTS AS
-  SELECT * FROM BRONZE.ODOS.EVENTS;
-
-CREATE OR REPLACE VIEW DEFECT_EVENT AS
-  SELECT * FROM BRONZE.SALESFORCE.DEFECT_EVENT__C;
-
-CREATE OR REPLACE VIEW DELIVERY_TRACKING AS
-  SELECT * FROM BRONZE.SALESFORCE.DELIVERY_TRACKING__C;
+PUT 'file://dbt_project/dbt_project.yml' @PUBLIC.DBT_STAGE/hydrab_fleet/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+PUT 'file://dbt_project/profiles.yml' @PUBLIC.DBT_STAGE/hydrab_fleet/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+PUT 'file://dbt_project/models/schema.yml' @PUBLIC.DBT_STAGE/hydrab_fleet/models/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+PUT 'file://dbt_project/models/staging/stg_vehicles.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/staging/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+PUT 'file://dbt_project/models/staging/stg_telemetry.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/staging/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+PUT 'file://dbt_project/models/staging/stg_defects.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/staging/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+PUT 'file://dbt_project/models/staging/stg_deliveries.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/staging/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+PUT 'file://dbt_project/models/marts/dim_vehicle.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/marts/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+PUT 'file://dbt_project/models/marts/fct_fleet_health.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/marts/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+PUT 'file://dbt_project/models/marts/fct_delivery_pipeline.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/marts/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
 ```
 
-NOTE: The shared data lives in database `BRONZE` (schemas: SALESFORCE, ODOS).
-If the BRONZE database doesn't exist, the admin hasn't set up the inbound share yet.
-Tell the user: "The shared BRONZE database isn't available. Ask the lab facilitator to run admin_setup.sql first."
-
-### Step 4: Build SILVER Dynamic Tables
+Then create the NPO:
 ```sql
-USE SCHEMA IDENTIFIER($user_db || '.SILVER');
-
-CREATE OR REPLACE DYNAMIC TABLE VEHICLES_SILVER
-  TARGET_LAG = '5 minutes'
-  WAREHOUSE = HYDRAB_HOL_WH
-AS
-SELECT
-  "Chassis_Number__c" AS vin,
-  "Product_Name__c" AS model,
-  "Account_Name__c" AS customer,
-  "Depot_Name__c" AS depot,
-  "Status" AS status,
-  "Install_Date" AS install_date
-FROM BRONZE.ASSET
-WHERE "Chassis_Number__c" IS NOT NULL;
-
-CREATE OR REPLACE DYNAMIC TABLE TELEMETRY_SILVER
-  TARGET_LAG = '5 minutes'
-  WAREHOUSE = HYDRAB_HOL_WH
-AS
-SELECT
-  RAW:vin::STRING AS vin,
-  RAW:timestamp::TIMESTAMP AS event_time,
-  RAW:signals:battery_soc::FLOAT AS battery_soc,
-  RAW:signals:speed::FLOAT AS speed_kmh,
-  RAW:signals:battery_temperature::FLOAT AS cell_temp,
-  RAW:signals:latitude::FLOAT AS latitude,
-  RAW:signals:longitude::FLOAT AS longitude
-FROM BRONZE.ODOS_EVENTS;
-
-CREATE OR REPLACE DYNAMIC TABLE DEFECTS_SILVER
-  TARGET_LAG = '5 minutes'
-  WAREHOUSE = HYDRAB_HOL_WH
-AS
-SELECT
-  "Asset__c" AS asset_id,
-  "Defect_Type__c" AS defect_type,
-  "Severity__c" AS severity,
-  "Root_Cause__c" AS root_cause,
-  "Repair_Cost__c" AS repair_cost,
-  "CreatedDate" AS created_date
-FROM BRONZE.DEFECT_EVENT;
+EXECUTE IMMEDIATE
+$$
+DECLARE
+    db STRING DEFAULT $HOL_DB;
+BEGIN
+    EXECUTE IMMEDIATE 'CREATE OR REPLACE NOTEBOOK PROJECT ' || :db || '.PUBLIC.HYDRAB_PROJECT FROM ''@' || :db || '.PUBLIC.NOTEBOOK_STAGE''';
+    RETURN 'Notebook Project created: ' || :db || '.PUBLIC.HYDRAB_PROJECT';
+END;
+$$;
 ```
 
-### Step 5: Build GOLD views
+### Step 3 — Execute notebooks
+
+Run all 5 notebooks headlessly in container runtime:
+
 ```sql
-USE SCHEMA IDENTIFIER($user_db || '.GOLD');
+EXECUTE NOTEBOOK PROJECT IDENTIFIER($HOL_DB || '.PUBLIC.HYDRAB_PROJECT')
+  MAIN_FILE = 'notebooks/01_explore_data.ipynb'
+  COMPUTE_POOL = 'HYDRAB_HOL_POOL'
+  QUERY_WAREHOUSE = 'HYDRAB_HOL_WH'
+  RUNTIME = 'V2.2-CPU-PY3.12';
 
-CREATE OR REPLACE VIEW DIM_VEHICLE AS
-SELECT * FROM SILVER.VEHICLES_SILVER;
+EXECUTE NOTEBOOK PROJECT IDENTIFIER($HOL_DB || '.PUBLIC.HYDRAB_PROJECT')
+  MAIN_FILE = 'notebooks/02_build_silver_gold.ipynb'
+  COMPUTE_POOL = 'HYDRAB_HOL_POOL'
+  QUERY_WAREHOUSE = 'HYDRAB_HOL_WH'
+  RUNTIME = 'V2.2-CPU-PY3.12';
 
-CREATE OR REPLACE VIEW FCT_LATEST_TELEMETRY AS
-SELECT *
-FROM SILVER.TELEMETRY_SILVER
-QUALIFY ROW_NUMBER() OVER (PARTITION BY vin ORDER BY event_time DESC) = 1;
+EXECUTE NOTEBOOK PROJECT IDENTIFIER($HOL_DB || '.PUBLIC.HYDRAB_PROJECT')
+  MAIN_FILE = 'notebooks/03_cortex_agent.ipynb'
+  COMPUTE_POOL = 'HYDRAB_HOL_POOL'
+  QUERY_WAREHOUSE = 'HYDRAB_HOL_WH'
+  RUNTIME = 'V2.2-CPU-PY3.12';
 
-CREATE OR REPLACE VIEW FCT_DEFECT AS
-SELECT * FROM SILVER.DEFECTS_SILVER;
+EXECUTE NOTEBOOK PROJECT IDENTIFIER($HOL_DB || '.PUBLIC.HYDRAB_PROJECT')
+  MAIN_FILE = 'notebooks/04_deploy_dashboard.ipynb'
+  COMPUTE_POOL = 'HYDRAB_HOL_POOL'
+  QUERY_WAREHOUSE = 'HYDRAB_HOL_WH'
+  RUNTIME = 'V2.2-CPU-PY3.12';
+
+EXECUTE NOTEBOOK PROJECT IDENTIFIER($HOL_DB || '.PUBLIC.HYDRAB_PROJECT')
+  MAIN_FILE = 'notebooks/05_dbt_production.ipynb'
+  COMPUTE_POOL = 'HYDRAB_HOL_POOL'
+  QUERY_WAREHOUSE = 'HYDRAB_HOL_WH'
+  RUNTIME = 'V2.2-CPU-PY3.12';
 ```
 
-### Step 6: Enable cross-region inference
-```sql
-ALTER ACCOUNT SET CORTEX_ENABLED_CROSS_REGION = 'ANY_REGION';
-```
+Run each EXECUTE NOTEBOOK PROJECT statement one at a time. If one fails, report the error and continue with the next.
 
-### Step 7: Create Git Repository for notebooks
-```sql
-USE DATABASE IDENTIFIER($user_db);
-USE SCHEMA PUBLIC;
-
-CREATE GIT REPOSITORY IF NOT EXISTS HYDRAB_HOL_REPO
-  ORIGIN = 'https://github.com/nele-huvaere/hydrab-hol.git'
-  API_INTEGRATION = HYDRAB_GIT_INTEGRATION;
-
-ALTER GIT REPOSITORY HYDRAB_HOL_REPO FETCH;
-```
-
-After creating the repo, verify files are accessible:
-```sql
-LS @HYDRAB_HOL_REPO/branches/main/notebooks/;
-```
-
-### Step 8: Deploy dashboard and validate end-to-end
-
-Create the SPCS service and verify all layers have data:
+### Step 4 — Verify and report
 
 ```sql
--- Deploy the React dashboard
-USE SCHEMA IDENTIFIER($user_db || '.GOLD');
+USE DATABASE IDENTIFIER($HOL_DB);
 
-CREATE SERVICE IF NOT EXISTS DASHBOARD_SERVICE
-  IN COMPUTE POOL HYDRAB_HOL_POOL
-  FROM SPECIFICATION $$
-  spec:
-    containers:
-    - name: dashboard
-      image: /HYDRAB_HOL_SHARED/PUBLIC/IMAGE_REPO/hydrab-dashboard:v1
-      resources:
-        requests:
-          cpu: 0.5
-          memory: 512M
-        limits:
-          cpu: 1
-          memory: 1G
-    endpoints:
-    - name: dashboard
-      port: 3000
-      public: true
-  $$
-  MIN_INSTANCES = 1
-  MAX_INSTANCES = 1;
-```
-
-Wait for the service (poll up to 3 times with 15-second waits):
-```sql
-SELECT SYSTEM$GET_SERVICE_STATUS('DASHBOARD_SERVICE');
-```
-
-Get the dashboard URL:
-```sql
-SHOW ENDPOINTS IN SERVICE DASHBOARD_SERVICE;
-```
-
-Run final validation:
-```sql
+-- Row counts
 SELECT 'BRONZE.ASSET' as tbl, COUNT(*) as rows FROM BRONZE.ASSET
-UNION ALL SELECT 'BRONZE.ODOS_EVENTS', COUNT(*) FROM BRONZE.ODOS_EVENTS
 UNION ALL SELECT 'SILVER.VEHICLES_SILVER', COUNT(*) FROM SILVER.VEHICLES_SILVER
-UNION ALL SELECT 'SILVER.TELEMETRY_SILVER', COUNT(*) FROM SILVER.TELEMETRY_SILVER
 UNION ALL SELECT 'GOLD.DIM_VEHICLE', COUNT(*) FROM GOLD.DIM_VEHICLE
 UNION ALL SELECT 'GOLD.FCT_LATEST_TELEMETRY', COUNT(*) FROM GOLD.FCT_LATEST_TELEMETRY;
+
+-- Dashboard URL
+SHOW ENDPOINTS IN SERVICE GOLD.DASHBOARD_SERVICE;
+
+-- Semantic View + Agent
+SHOW SEMANTIC VIEWS IN SCHEMA GOLD;
+SHOW AGENTS IN SCHEMA GOLD;
+
+-- dbt Project
+SHOW DBT PROJECTS IN SCHEMA GOLD;
 ```
 
 ## Final Report
 
-After ALL steps complete, report to the user:
+After all steps, report to the user:
 
-1. **Data Pipeline** — Row counts for BRONZE, SILVER, GOLD layers
-2. **Dashboard URL** — The public ingress_url (tell user to open in browser)
-3. **How to explore interactively:**
+1. **Data Pipeline** — Row counts for each layer
+2. **Dashboard** — The ingress_url from SHOW ENDPOINTS (tell user to open in browser)
+3. **Cortex Agent** — Confirm FLEET_AGENT exists, suggest sample questions:
+   - "How many vehicles does each customer operate?"
+   - "Which vehicles have battery SOC below 20%?"
+   - "What are the most common defect types?"
+4. **dbt Project** — Confirm HYDRAB_FLEET_DBT exists and ran successfully
+5. **Interactive Notebooks** — Tell the user:
 
-> **Everything is deployed!**
->
-> **Dashboard:** [paste the ingress_url] — open this in your browser
->
-> **Interactive Notebooks** (to explore the data yourself):
+> **To explore the notebooks interactively:**
 > 1. Go to **Workspaces** → **+ Add new** → **From Git repository**
-> 2. Paste URL: `https://github.com/nele-huvaere/hydrab-hol.git`
+> 2. URL: `https://github.com/nele-huvaere/hydrab-hol.git`
 > 3. API Integration: **HYDRAB_GIT_INTEGRATION**
 > 4. Authentication: **Public repository** → **Create**
->
-> Notebooks in your workspace:
-> - `notebooks/02_explore_data.ipynb` — Explore Salesforce + Odos data
-> - `notebooks/03_build_gold.ipynb` — Semantic View & Cortex Agent
-> - `notebooks/04_deploy_dashboard.ipynb` — Dashboard (already deployed)
-> - `notebooks/05_dbt_production.ipynb` — dbt production deployment
 
 ## Phase 2: Extend with CoCo Desktop
 
-After the lab, users open this folder in Cortex Code Desktop to extend the React app.
+After the lab, users open the `react-app/` folder in Cortex Code Desktop:
 
-### Extension Challenges
+1. **Add pages** — Delivery Tracking, Defects heatmap
+2. **Connect live queries** — Replace static data with Snowflake queries
+3. **Add Agent chat** — Embed the Cortex Agent in the dashboard
+4. **Improve the map** — Color by SOC, add route history
+5. **Rebuild and deploy** — `docker build`, push, `ALTER SERVICE`
 
-When the user asks to extend the app, guide them through these ideas:
+## Hard constraints
 
-1. **Add a Delivery Tracking page** — Use `DELIVERY_TRACKING__C` data to show delivery pipeline status with a Sankey or funnel chart
-2. **Connect live Snowflake queries** — Replace static JSON API routes with real Snowflake queries using the Snowflake Node.js driver
-3. **Add a Defects page** — Show defect events by model/depot with a heatmap
-4. **Improve the Fleet Map** — Add vehicle detail popups, color by SOC level, add route history
-5. **Ask the Agent** — Build a natural language query interface that calls the Cortex Agent
-
-### How to Re-Deploy
-
-After making changes to the React app:
-1. Build the Docker image: `docker build -t hydrab-dashboard:v2 ./react-app`
-2. Tag and push to the image repo
-3. `ALTER SERVICE ... FROM SPECIFICATION ...` to update the SPCS service
+- Do not touch any database other than `HYDRAB_HOL_<USER>`.
+- `BRONZE` (shared database) is **read-only** — never write to it.
+- Use warehouse `HYDRAB_HOL_WH` everywhere.
+- Always derive the user namespace from `CURRENT_USER()`.
+- Do not modify notebooks or files in this pack at runtime.
 
 ## Data Architecture
 
 ```
-BRONZE (Inbound Share)
-├── SALESFORCE
-│   ├── OPPORTUNITY (1,056 rows) — Sales pipeline
-│   ├── ASSET (42,884 rows) — Vehicle master
-│   ├── ASSET_LOCATION_HISTORY__C (1.85M) — GPS history
-│   ├── DEFECT_EVENT__C (47,813) — Defects
-│   └── DELIVERY_TRACKING__C (6,621) — Delivery status
-└── ODOS
-    └── EVENTS (860K) — Raw telemetry JSON
+BRONZE (Shared, read-only)
+├── SALESFORCE: OPPORTUNITY, ASSET, DEFECT_EVENT__C, DELIVERY_TRACKING__C
+└── ODOS: EVENTS (raw telemetry JSON)
 
 SILVER (Dynamic Tables, 5-min lag)
-├── VEHICLES_SILVER
-├── TELEMETRY_SILVER
-└── DEFECTS_SILVER
+├── VEHICLES_SILVER, TELEMETRY_SILVER, DEFECTS_SILVER
 
 GOLD (Views + AI)
-├── DIM_VEHICLE, DIM_CUSTOMER, DIM_DEPOT
-├── FCT_TELEMETRY, FCT_DEFECT
+├── DIM_VEHICLE, FCT_LATEST_TELEMETRY, FCT_DEFECT
 ├── FLEET_SEMANTIC (Semantic View)
-└── FLEET_AGENT (Cortex Agent)
+├── FLEET_AGENT (Cortex Agent)
+└── DASHBOARD_SERVICE (SPCS)
 ```
 
-## Key Technical Notes
-
-- Salesforce columns need quoting: `"Region__c"`, `"StageName"`, `"Amount"`
-- VIN join: `ASSET."Chassis_Number__c"` = Odos JSON `vin` field
-- 2,492 VINs overlap between Salesforce and Odos
-- Cortex Agent uses: Cortex Analyst (structured) + Cortex Search (unstructured)
-- Cross-region inference: `ALTER ACCOUNT SET CORTEX_ENABLED_CROSS_REGION = 'ANY_REGION'`
-
-## Snowflake Account Details
+## Account Details
 
 - Account: `sfseeurope-nhuvaere_azure1`
 - BRONZE Share from: `GXNIMKH.HV05860`
 - Compute Pool: `HYDRAB_HOL_POOL`
 - Image Repo: `HYDRAB_HOL_SHARED.PUBLIC.IMAGE_REPO`
+- Git Integration: `HYDRAB_GIT_INTEGRATION`

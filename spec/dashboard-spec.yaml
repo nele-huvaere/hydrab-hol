@@ -1,0 +1,21 @@
+spec:
+  containers:
+  - name: dashboard
+    image: /HYDRAB_HOL_SHARED/PUBLIC/IMAGE_REPO/hydrab-dashboard:v1
+    env:
+      SNOWFLAKE_DATABASE: HYDRAB_HOL_NHUVAERE
+      NODE_ENV: production
+    resources:
+      requests:
+        cpu: 0.5
+        memory: 512M
+      limits:
+        cpu: 1
+        memory: 1G
+    readinessProbe:
+      port: 3000
+      path: /
+  endpoints:
+  - name: dashboard
+    port: 3000
+    public: true

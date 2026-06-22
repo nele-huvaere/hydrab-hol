@@ -1,0 +1,21 @@
+hydrab_fleet:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: 'not needed'
+      user: 'not needed'
+      role: ACCOUNTADMIN
+      database: HYDRAB_HOL_NHUVAERE
+      schema: GOLD
+      warehouse: HYDRAB_HOL_WH
+      threads: 4
+    prod:
+      type: snowflake
+      account: 'not needed'
+      user: 'not needed'
+      role: ACCOUNTADMIN
+      database: HYDRAB_HOL_NHUVAERE
+      schema: GOLD
+      warehouse: HYDRAB_HOL_WH
+      threads: 4

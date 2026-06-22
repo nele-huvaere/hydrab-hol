@@ -1,0 +1,60 @@
+version: 2
+
+sources:
+  - name: bronze
+    database: "{{ target.database }}"
+    schema: BRONZE
+    description: "Raw data from Salesforce CRM and Odos Telemetry API"
+    tables:
+      - name: ASSET
+        description: "Vehicle master data from Salesforce"
+      - name: ODOS_EVENTS
+        description: "Raw telemetry events from Odos API (JSON)"
+      - name: DEFECT_EVENT
+        description: "Defect events reported against vehicles"
+      - name: DELIVERY_TRACKING
+        description: "Delivery pipeline tracking records"
+
+models:
+  - name: stg_vehicles
+    description: "Cleaned vehicle master — one row per VIN"
+    columns:
+      - name: vin
+        description: "Vehicle Identification Number"
+        tests:
+          - not_null
+          - unique
+
+  - name: stg_telemetry
+    description: "Parsed telemetry signals from Odos JSON"
+    columns:
+      - name: vin
+        tests:
+          - not_null
+      - name: battery_soc
+        description: "Battery state of charge (0-100%)"
+
+  - name: stg_defects
+    description: "Cleaned defect events with type and severity"
+    columns:
+      - name: severity
+        tests:
+          - accepted_values:
+              values: ['Critical', 'High', 'Medium', 'Low']
+
+  - name: stg_deliveries
+    description: "Delivery tracking records with status"
+
+  - name: dim_vehicle
+    description: "Vehicle dimension enriched with latest telemetry"
+    columns:
+      - name: vin
+        tests:
+          - not_null
+          - unique
+
+  - name: fct_fleet_health
+    description: "Fleet health metrics aggregated by depot"
+
+  - name: fct_delivery_pipeline
+    description: "Delivery funnel grouped by status"

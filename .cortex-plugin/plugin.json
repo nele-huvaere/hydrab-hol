@@ -1,0 +1,9 @@
+{
+  "name": "hydrab-hol",
+  "version": "1.0.0",
+  "description": "HydraB Power Vehicle 360 Hands-On Lab — Electric bus fleet analytics with Snowflake Cortex Agent, Semantic Views, Dynamic Tables, and SPCS React dashboard. Upload this folder to install the full lab environment.",
+  "author": {
+    "name": "Snowflake SE Team — Nele Huvaere"
+  },
+  "skills": ["skills"]
+}

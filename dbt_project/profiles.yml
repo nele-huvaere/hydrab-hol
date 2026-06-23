@@ -1,21 +1,12 @@
 hydrab_fleet:
-  target: dev
+  target: prod
   outputs:
-    dev:
-      type: snowflake
-      account: 'not needed'
-      user: 'not needed'
-      role: ACCOUNTADMIN
-      database: HYDRAB_HOL_NHUVAERE
-      schema: GOLD
-      warehouse: HYDRAB_HOL_WH
-      threads: 4
     prod:
       type: snowflake
-      account: 'not needed'
-      user: 'not needed'
+      account: '{{ env_var("SNOWFLAKE_ACCOUNT", "not_needed") }}'
+      user: '{{ env_var("SNOWFLAKE_USER", "not_needed") }}'
       role: ACCOUNTADMIN
-      database: HYDRAB_HOL_NHUVAERE
+      database: '{{ env_var("SNOWFLAKE_DATABASE", "HYDRAB_HOL") }}'
       schema: GOLD
       warehouse: HYDRAB_HOL_WH
       threads: 4

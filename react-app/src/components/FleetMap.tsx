@@ -20,7 +20,7 @@ export default function FleetMap({ positions }: { positions: BusPosition[] }) {
 
     const map = L.map('fleet-map').setView([53.5, -3.5], 6)
 
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    L.tileLayer('/api/tiles/{z}/{x}/{y}', {
       attribution: '&copy; OpenStreetMap contributors',
       maxZoom: 18,
     }).addTo(map)

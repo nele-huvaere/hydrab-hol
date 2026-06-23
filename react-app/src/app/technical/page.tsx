@@ -4,7 +4,7 @@ export default function TechnicalPage() {
   return (
     <main className="container">
       <h1 className="page-title">Technical Architecture</h1>
-      <p className="page-subtitle">How this app connects to Snowflake, what data sources are used, and which functions power the backend</p>
+      <p className="page-subtitle">How this application connects to Snowflake, what data sources power it, and which functions drive the backend</p>
 
       {/* Architecture Overview */}
       <div className="card" style={{ marginBottom: 28 }}>
@@ -12,18 +12,21 @@ export default function TechnicalPage() {
         <div style={{ padding: '24px 28px', lineHeight: 1.8, fontSize: 14 }}>
           <div className="tech-diagram">
             <div className="tech-diagram-row">
-              <div className="tech-box tech-box-green">React / Next.js Frontend</div>
-              <div className="tech-arrow">→</div>
-              <div className="tech-box tech-box-blue">Next.js API Routes</div>
-              <div className="tech-arrow">→</div>
+              <div className="tech-box tech-box-green">React / Next.js</div>
+              <div className="tech-arrow">&rarr;</div>
+              <div className="tech-box tech-box-blue">API Routes</div>
+              <div className="tech-arrow">&rarr;</div>
               <div className="tech-box tech-box-snow">Snowflake (SQL + Cortex)</div>
             </div>
           </div>
           <p style={{ marginTop: 20, color: '#555' }}>
-            The app uses a <strong>pre-queried static data</strong> pattern for the demo. In production, the API routes
-            would make live calls to Snowflake using the <code>snowflake-sdk</code> Node.js connector or the Snowflake REST API.
-            The Chat panel calls the <strong>Cortex Agent</strong> endpoint to answer natural-language questions about the fleet.
+            This React application runs as a container on <strong>Snowpark Container Services (SPCS)</strong> - Snowflake&apos;s managed container platform.
+            The API routes query Snowflake via the Node.js SDK. The Chat panel calls the <strong>Cortex Agent</strong> endpoint for natural-language Q&amp;A over fleet data.
+            External data (weather) is pulled via Open-Meteo API through a Snowflake External Access Integration.
           </p>
+          <div style={{ marginTop: 16, padding: '12px 16px', background: '#f0f4ff', borderRadius: 8, border: '1px solid #bfdbfe', fontSize: 13 }}>
+            <strong>Deployment:</strong> Docker image &rarr; Snowflake Image Registry &rarr; SPCS Service (CPU_X64_XS compute pool) &rarr; Ingress endpoint with Snowflake auth
+          </div>
         </div>
       </div>
 
@@ -35,7 +38,7 @@ export default function TechnicalPage() {
             <thead>
               <tr>
                 <th>Source System</th>
-                <th>Snowflake Database</th>
+                <th>Integration Method</th>
                 <th>Schema</th>
                 <th>What it Contains</th>
               </tr>
@@ -43,32 +46,32 @@ export default function TechnicalPage() {
             <tbody>
               <tr>
                 <td><strong>Salesforce CRM</strong></td>
-                <td>HYDRAB_HOL_NHUVAERE</td>
-                <td>BRONZE (inbound share)</td>
-                <td>Opportunities, Accounts, Contacts, Deliveries</td>
+                <td>Inbound Data Share</td>
+                <td>BRONZE</td>
+                <td>Opportunities, Accounts, Vehicles (Assets), Deliveries</td>
               </tr>
               <tr>
                 <td><strong>Odos Telemetry API</strong></td>
-                <td>HYDRAB_HOL_NHUVAERE</td>
-                <td>BRONZE → SILVER</td>
-                <td>Real-time vehicle GPS, SOC, temperature, speed</td>
+                <td>JSON ingestion &rarr; Dynamic Tables</td>
+                <td>BRONZE &rarr; SILVER &rarr; GOLD</td>
+                <td>Real-time GPS, battery SOC, cell temperature, speed</td>
               </tr>
               <tr>
-                <td><strong>Derived / Gold</strong></td>
-                <td>HYDRAB_HOL_NHUVAERE</td>
+                <td><strong>Open-Meteo Weather API</strong></td>
+                <td>External Access Integration</td>
+                <td>BRONZE</td>
+                <td>Temperature, wind speed, precipitation per depot location</td>
+              </tr>
+              <tr>
+                <td><strong>Dynamic Tables (Gold)</strong></td>
+                <td>Snowflake DT (auto-refresh)</td>
                 <td>GOLD</td>
-                <td>Aggregated views for dashboards and the agent</td>
-              </tr>
-              <tr>
-                <td><strong>Synthetic (Demo)</strong></td>
-                <td>HYDRAB_HOL_NHUVAERE</td>
-                <td>SYNTHETIC</td>
-                <td>Generated demo data for telemetry history</td>
+                <td>Aggregated fleet health, depot metrics, pipeline summaries</td>
               </tr>
             </tbody>
           </table>
 
-          <h3 style={{ marginTop: 24, fontSize: 15, fontWeight: 600 }}>Key Tables Used</h3>
+          <h3 style={{ marginTop: 24, fontSize: 15, fontWeight: 600 }}>Key Tables</h3>
           <table className="tech-table" style={{ marginTop: 12 }}>
             <thead>
               <tr>
@@ -79,23 +82,24 @@ export default function TechnicalPage() {
             </thead>
             <tbody>
               <tr><td><code>OPPORTUNITY</code></td><td>1,056</td><td>Sales pipeline deals (stages, amounts, regions)</td></tr>
-              <tr><td><code>ASSET</code></td><td>42,884</td><td>Vehicle master data (VIN, model, customer, depot)</td></tr>
-              <tr><td><code>ASSET_LOCATION_HISTORY__C</code></td><td>1.85M</td><td>GPS location pings for fleet tracking</td></tr>
+              <tr><td><code>ASSET</code></td><td>42,884</td><td>Vehicle master data (VIN, model, customer, depot, GPS)</td></tr>
+              <tr><td><code>ODOS_EVENTS</code></td><td>~500K</td><td>Raw telemetry JSON (SOC, temp, speed, energy)</td></tr>
               <tr><td><code>DEFECT_EVENT__C</code></td><td>47,813</td><td>Vehicle defect reports and maintenance events</td></tr>
               <tr><td><code>DELIVERY_TRACKING__C</code></td><td>6,621</td><td>Delivery status and logistics tracking</td></tr>
+              <tr><td><code>DEPOT_WEATHER</code></td><td>15</td><td>Latest weather conditions per depot (Open-Meteo)</td></tr>
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Snowflake Functions & Features */}
+      {/* Snowflake Features */}
       <div className="card" style={{ marginBottom: 28 }}>
-        <div className="card-header">Snowflake Functions & Features Used</div>
+        <div className="card-header">Snowflake Features Used</div>
         <div style={{ padding: '24px 28px' }}>
           <table className="tech-table">
             <thead>
               <tr>
-                <th>Feature / Function</th>
+                <th>Feature</th>
                 <th>Where Used</th>
                 <th>Purpose</th>
               </tr>
@@ -103,192 +107,153 @@ export default function TechnicalPage() {
             <tbody>
               <tr>
                 <td><strong>Cortex Agent</strong></td>
-                <td>Chat Panel → <code>/api/agent</code></td>
-                <td>Natural-language Q&A over fleet data using <code>HYDRAB_HOL_NHUVAERE.GOLD.HYDRAB_FLEET_AGENT</code></td>
+                <td>Chat Panel</td>
+                <td>Natural-language Q&amp;A over fleet data with semantic model</td>
               </tr>
               <tr>
                 <td><strong>Data Sharing (Inbound)</strong></td>
                 <td>BRONZE schema</td>
-                <td>Salesforce data shared from account <code>GXNIMKH.HV05860</code> via Snowflake secure share</td>
+                <td>Salesforce data shared from production account via secure share</td>
               </tr>
               <tr>
-                <td><strong>Snowflake SQL Aggregations</strong></td>
-                <td>Pipeline, Delivery, Fleet pages</td>
-                <td><code>GROUP BY</code>, <code>COUNT</code>, <code>SUM</code> on opportunity stages, delivery statuses, depot counts</td>
+                <td><strong>Dynamic Tables</strong></td>
+                <td>SILVER + GOLD schemas</td>
+                <td>Auto-refreshing transformations - no ETL scheduling needed</td>
               </tr>
               <tr>
-                <td><strong>Dynamic Tables / Views</strong></td>
-                <td>GOLD schema</td>
-                <td>Pre-aggregated Gold layer views that power API responses</td>
+                <td><strong>External Access Integration</strong></td>
+                <td>Notebooks + SPCS</td>
+                <td>Secure outbound calls to Open-Meteo weather API</td>
+              </tr>
+              <tr>
+                <td><strong>SPCS (Container Services)</strong></td>
+                <td>This application</td>
+                <td>Runs the React app as a managed container with ingress</td>
+              </tr>
+              <tr>
+                <td><strong>Notebooks (NPO)</strong></td>
+                <td>Data pipeline</td>
+                <td>Headless execution of ETL notebooks via EXECUTE NOTEBOOK PROJECT</td>
+              </tr>
+              <tr>
+                <td><strong>dbt Projects on Snowflake</strong></td>
+                <td>Production models</td>
+                <td>Governed data transformations with testing and lineage</td>
               </tr>
               <tr>
                 <td><strong>Geospatial (ST_ functions)</strong></td>
                 <td>Fleet Map</td>
-                <td><code>ST_POINT</code>, coordinate extraction from <code>ASSET_LOCATION_HISTORY__C</code></td>
-              </tr>
-              <tr>
-                <td><strong>Warehouse: HYDRAB_HOL_WH</strong></td>
-                <td>All queries</td>
-                <td>XS warehouse for compute — auto-suspend/resume for cost efficiency</td>
+                <td>Coordinate extraction from GPS telemetry data</td>
               </tr>
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Fields Used Per Page */}
+      {/* API Routes */}
       <div className="card" style={{ marginBottom: 28 }}>
-        <div className="card-header">Fields Used Per Page</div>
+        <div className="card-header">API Routes</div>
         <div style={{ padding: '24px 28px' }}>
-          <div className="tech-section">
-            <h3>Overview Dashboard</h3>
-            <ul className="tech-field-list">
-              <li><code>OPPORTUNITY.StageName</code> — pipeline funnel stages</li>
-              <li><code>OPPORTUNITY.Amount</code> — deal values in £</li>
-              <li><code>DELIVERY_TRACKING__C.Status__c</code> — delivery status breakdown</li>
-              <li><code>ASSET_LOCATION_HISTORY__C.Latitude__c / Longitude__c</code> — fleet map pins</li>
-            </ul>
-          </div>
-
-          <div className="tech-section">
-            <h3>Fleet Map</h3>
-            <ul className="tech-field-list">
-              <li><code>ASSET.Id</code> — vehicle identifier</li>
-              <li><code>ASSET_LOCATION_HISTORY__C.Latitude__c</code> — GPS lat</li>
-              <li><code>ASSET_LOCATION_HISTORY__C.Longitude__c</code> — GPS lon</li>
-              <li><code>ASSET.Depot__c</code> — depot assignment</li>
-              <li><code>ASSET.Status</code> — deployed / in_transit / charging</li>
-            </ul>
-          </div>
-
-          <div className="tech-section">
-            <h3>Pipeline</h3>
-            <ul className="tech-field-list">
-              <li><code>OPPORTUNITY.Name</code> — deal name</li>
-              <li><code>OPPORTUNITY.StageName</code> — current pipeline stage</li>
-              <li><code>OPPORTUNITY.Amount</code> — deal value</li>
-              <li><code>OPPORTUNITY.CloseDate</code> — expected close</li>
-              <li><code>OPPORTUNITY.Region__c</code> — geographic region</li>
-              <li><code>OPPORTUNITY.Territory2Id</code> — territory mapping</li>
-              <li><code>OPPORTUNITY.Number_of_Assets__c</code> — vehicles in order</li>
-            </ul>
-          </div>
-
-          <div className="tech-section">
-            <h3>Vehicle Detail (Telemetry)</h3>
-            <ul className="tech-field-list">
-              <li><code>ASSET.Name</code> — vehicle fleet number</li>
-              <li><code>ASSET.VIN__c</code> — Vehicle Identification Number</li>
-              <li><code>Telemetry: SOC (State of Charge %)</code> — battery level</li>
-              <li><code>Telemetry: Battery_Temp_C</code> — thermal monitoring</li>
-              <li><code>Telemetry: Speed_kmh</code> — current speed</li>
-              <li><code>Telemetry: Energy_Consumed_kWh</code> — charge session data</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      {/* API Route Details */}
-      <div className="card" style={{ marginBottom: 28 }}>
-        <div className="card-header">API Routes & Snowflake Calls</div>
-        <div style={{ padding: '24px 28px' }}>
-          <p style={{ color: '#555', marginBottom: 16, fontSize: 13 }}>
-            Each API route pre-queries Snowflake data. In production, these would execute live SQL via the Snowflake Node.js SDK.
-          </p>
           <table className="tech-table">
             <thead>
               <tr>
                 <th>Route</th>
                 <th>Method</th>
-                <th>Source Query (Snowflake SQL)</th>
+                <th>Data Source</th>
+                <th>Returns</th>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td><code>/api/fleet-map</code></td>
                 <td>GET</td>
-                <td>
-                  <code className="tech-sql">SELECT a.Id, alh.Latitude__c, alh.Longitude__c, a.Depot__c, a.Status FROM ASSET a JOIN ASSET_LOCATION_HISTORY__C alh ON a.Id = alh.Asset__c WHERE alh.CreatedDate = (SELECT MAX(CreatedDate) ...)</code>
-                </td>
+                <td>ASSET + GPS telemetry</td>
+                <td>Vehicle positions with depot and status</td>
               </tr>
               <tr>
                 <td><code>/api/fleet-by-depot</code></td>
                 <td>GET</td>
-                <td>
-                  <code className="tech-sql">SELECT Depot__c AS DEPOT, City__c AS CITY, COUNT(*) AS VEHICLE_COUNT, SUM(CASE WHEN Status=&apos;Deployed&apos; THEN 1 END) AS DEPLOYED FROM ASSET GROUP BY 1, 2</code>
-                </td>
+                <td>ASSET</td>
+                <td>Vehicle counts per depot (deployed vs in-production)</td>
+              </tr>
+              <tr>
+                <td><code>/api/fleet-health</code></td>
+                <td>GET</td>
+                <td>ODOS_EVENTS (telemetry)</td>
+                <td>SOC distribution, per-depot battery health, vehicles needing charge</td>
+              </tr>
+              <tr>
+                <td><code>/api/depot-weather</code></td>
+                <td>GET</td>
+                <td>DEPOT_WEATHER + ODOS_EVENTS</td>
+                <td>Weather conditions combined with battery performance per depot</td>
               </tr>
               <tr>
                 <td><code>/api/pipeline-funnel</code></td>
                 <td>GET</td>
-                <td>
-                  <code className="tech-sql">SELECT StageName AS stage, COUNT(*) AS count, SUM(Amount) AS amount, COUNT(DISTINCT AccountId) AS customers FROM OPPORTUNITY GROUP BY StageName</code>
-                </td>
+                <td>OPPORTUNITY</td>
+                <td>Pipeline stages with counts and amounts</td>
               </tr>
               <tr>
                 <td><code>/api/opportunities</code></td>
                 <td>GET</td>
-                <td>
-                  <code className="tech-sql">SELECT Name, StageName, Amount, CloseDate, Region__c, Number_of_Assets__c FROM OPPORTUNITY WHERE Amount &gt; 10000000 ORDER BY Amount DESC LIMIT 10</code>
-                </td>
+                <td>OPPORTUNITY</td>
+                <td>Top 10 open opportunities by value</td>
               </tr>
               <tr>
                 <td><code>/api/delivery-status</code></td>
                 <td>GET</td>
-                <td>
-                  <code className="tech-sql">SELECT Status__c AS status, COUNT(*) AS count FROM DELIVERY_TRACKING__C GROUP BY Status__c ORDER BY count DESC</code>
-                </td>
+                <td>DELIVERY_TRACKING__C</td>
+                <td>Delivery status breakdown</td>
               </tr>
               <tr>
                 <td><code>/api/telemetry-history</code></td>
                 <td>GET</td>
-                <td>
-                  <code className="tech-sql">SELECT TIME_SLICE(timestamp, 30, &apos;MINUTE&apos;) AS time, AVG(soc) AS soc, AVG(battery_temp) AS temp, AVG(speed) AS speed FROM TELEMETRY WHERE asset_id = ? AND DATE = CURRENT_DATE() GROUP BY 1</code>
-                </td>
+                <td>ODOS_EVENTS</td>
+                <td>Time-series SOC, temperature, speed for a vehicle</td>
               </tr>
               <tr>
                 <td><code>/api/agent</code></td>
                 <td>POST</td>
-                <td>
-                  <code className="tech-sql">POST /api/v2/cortex/agent:run → HYDRAB_FLEET_AGENT (Cortex Agent with semantic model over GOLD schema)</code>
-                </td>
+                <td>Cortex Agent API</td>
+                <td>Natural-language answers about fleet data</td>
               </tr>
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* How the Cortex Agent Works */}
+      {/* Cortex Agent */}
       <div className="card" style={{ marginBottom: 28 }}>
-        <div className="card-header">How the Cortex Agent Call Works</div>
+        <div className="card-header">How the Cortex Agent Works</div>
         <div style={{ padding: '24px 28px', lineHeight: 1.8, fontSize: 14 }}>
           <div className="tech-steps">
             <div className="tech-step">
               <div className="tech-step-num">1</div>
               <div className="tech-step-content">
-                <strong>User types a question</strong> in the Chat Panel (e.g. &ldquo;How many vehicles per customer?&rdquo;)
+                <strong>User asks a question</strong> in the Chat Panel (e.g. &ldquo;Which depot has the most vehicles?&rdquo;)
               </div>
             </div>
             <div className="tech-step">
               <div className="tech-step-num">2</div>
               <div className="tech-step-content">
-                <strong>Frontend sends POST</strong> to <code>/api/agent</code> with <code>{`{ "question": "..." }`}</code>
+                <strong>Frontend POST</strong> to <code>/api/agent</code> with the question text
               </div>
             </div>
             <div className="tech-step">
               <div className="tech-step-num">3</div>
               <div className="tech-step-content">
-                <strong>API route calls Snowflake Cortex Agent</strong> at <code>HYDRAB_HOL_NHUVAERE.GOLD.HYDRAB_FLEET_AGENT</code>
+                <strong>API calls Snowflake Cortex Agent</strong> at <code>HYDRAB_FLEET_AGENT</code>
                 <div style={{ marginTop: 8, padding: '12px 16px', background: '#f8f9fa', borderRadius: 6, fontFamily: 'monospace', fontSize: 12 }}>
-                  POST https://&lt;account&gt;.snowflakecomputing.com/api/v2/cortex/agent:run<br/>
-                  {`{ "model": "...", "agent_name": "HYDRAB_FLEET_AGENT", "messages": [...] }`}
+                  POST /api/v2/cortex/agent:run<br/>
+                  {`{ "agent_name": "HYDRAB_FLEET_AGENT", "messages": [...] }`}
                 </div>
               </div>
             </div>
             <div className="tech-step">
               <div className="tech-step-num">4</div>
               <div className="tech-step-content">
-                <strong>Cortex Agent processes the question:</strong>
+                <strong>Cortex Agent processes:</strong>
                 <ul style={{ margin: '8px 0', paddingLeft: 20 }}>
                   <li>Uses a Semantic Model to understand the data schema</li>
                   <li>Generates SQL against GOLD tables</li>
@@ -300,59 +265,86 @@ export default function TechnicalPage() {
             <div className="tech-step">
               <div className="tech-step-num">5</div>
               <div className="tech-step-content">
-                <strong>Response returned</strong> to the chat panel and displayed to the user
+                <strong>Response displayed</strong> in the chat panel
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Production vs Demo */}
+      {/* Data Pipeline */}
       <div className="card" style={{ marginBottom: 28 }}>
-        <div className="card-header">Demo vs. Production Mode</div>
+        <div className="card-header">Data Pipeline Architecture</div>
+        <div style={{ padding: '24px 28px', lineHeight: 1.8, fontSize: 14 }}>
+          <div className="tech-diagram">
+            <div className="tech-diagram-row">
+              <div className="tech-box" style={{ background: '#fef3e8', border: '2px solid #e67e22', color: '#b45309', minWidth: 140 }}>Sources</div>
+              <div className="tech-arrow">&rarr;</div>
+              <div className="tech-box" style={{ background: '#fff3e0', border: '2px solid #f59e0b', color: '#92400e', minWidth: 140 }}>BRONZE</div>
+              <div className="tech-arrow">&rarr;</div>
+              <div className="tech-box" style={{ background: '#e8f4fd', border: '2px solid #0077b6', color: '#005a8c', minWidth: 140 }}>SILVER (DT)</div>
+              <div className="tech-arrow">&rarr;</div>
+              <div className="tech-box tech-box-green" style={{ minWidth: 140 }}>GOLD (DT)</div>
+            </div>
+          </div>
+          <div style={{ marginTop: 20 }}>
+            <table className="tech-table">
+              <thead>
+                <tr>
+                  <th>Layer</th>
+                  <th>Method</th>
+                  <th>Purpose</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>BRONZE</strong></td>
+                  <td>Inbound share + API ingestion</td>
+                  <td>Raw data as-is from source systems</td>
+                </tr>
+                <tr>
+                  <td><strong>SILVER</strong></td>
+                  <td>Dynamic Tables (auto-refresh)</td>
+                  <td>Cleaned, typed, deduplicated - single source of truth</td>
+                </tr>
+                <tr>
+                  <td><strong>GOLD</strong></td>
+                  <td>Dynamic Tables (auto-refresh)</td>
+                  <td>Business-ready aggregations for the app and Cortex Agent</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* Deployment */}
+      <div className="card" style={{ marginBottom: 28 }}>
+        <div className="card-header">Deployment (SPCS)</div>
         <div style={{ padding: '24px 28px' }}>
           <table className="tech-table">
             <thead>
               <tr>
-                <th>Aspect</th>
-                <th>This Demo</th>
-                <th>Production</th>
+                <th>Component</th>
+                <th>Value</th>
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td>Data</td>
-                <td>Static JSON in API routes (pre-queried snapshots)</td>
-                <td>Live SQL queries via <code>snowflake-sdk</code></td>
-              </tr>
-              <tr>
-                <td>Auth</td>
-                <td>None (localhost demo)</td>
-                <td>Snowflake OAuth / key-pair JWT</td>
-              </tr>
-              <tr>
-                <td>Agent</td>
-                <td>Keyword-matched mock responses</td>
-                <td>Live Cortex Agent REST API call</td>
-              </tr>
-              <tr>
-                <td>Refresh</td>
-                <td>Page load only</td>
-                <td>WebSocket / polling for real-time telemetry</td>
-              </tr>
-              <tr>
-                <td>Hosting</td>
-                <td>Local Next.js dev server</td>
-                <td>Streamlit in Snowflake or SPCS container</td>
-              </tr>
+              <tr><td>Container Platform</td><td>Snowpark Container Services (SPCS)</td></tr>
+              <tr><td>Compute Pool</td><td><code>HYDRAB_HOL_POOL</code> (CPU_X64_XS, 1-3 nodes, auto-suspend 300s)</td></tr>
+              <tr><td>Image Registry</td><td><code>HYDRAB_HOL_SHARED.PUBLIC.IMAGE_REPO</code></td></tr>
+              <tr><td>Framework</td><td>Next.js 14 (standalone output) on Node 20 Alpine</td></tr>
+              <tr><td>Port</td><td>3000 (HOSTNAME=0.0.0.0 for SPCS ingress)</td></tr>
+              <tr><td>Auth</td><td>Snowflake OAuth via SPCS ingress endpoint</td></tr>
+              <tr><td>External Access</td><td><code>HYDRAB_EXTERNAL_API</code> (Open-Meteo outbound)</td></tr>
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Snowflake Account Info */}
+      {/* Snowflake Account */}
       <div className="card" style={{ marginBottom: 28 }}>
-        <div className="card-header">Snowflake Account Details</div>
+        <div className="card-header">Snowflake Environment</div>
         <div style={{ padding: '24px 28px' }}>
           <table className="tech-table">
             <thead>
@@ -362,13 +354,12 @@ export default function TechnicalPage() {
               </tr>
             </thead>
             <tbody>
-              <tr><td>Account</td><td><code>SFSEEUROPE-NHUVAERE_AZURE1</code></td></tr>
-              <tr><td>Database</td><td><code>HYDRAB_HOL_NHUVAERE</code></td></tr>
-              <tr><td>Warehouse</td><td><code>HYDRAB_HOL_WH</code> (X-Small)</td></tr>
-              <tr><td>Role</td><td><code>ACCOUNTADMIN</code></td></tr>
-              <tr><td>Agent</td><td><code>HYDRAB_HOL_NHUVAERE.GOLD.HYDRAB_FLEET_AGENT</code></td></tr>
-              <tr><td>BRONZE Share</td><td>Inbound from <code>GXNIMKH.HV05860</code></td></tr>
-              <tr><td>Schemas</td><td><code>BRONZE</code> → <code>SILVER</code> → <code>GOLD</code> + <code>SYNTHETIC</code></td></tr>
+              <tr><td>Database</td><td><code>HYDRAB_HOL_&lt;USER&gt;</code> (per-user isolation)</td></tr>
+              <tr><td>Warehouse</td><td><code>HYDRAB_HOL_WH</code> (Medium, 1-3 clusters, auto-suspend 60s)</td></tr>
+              <tr><td>Schemas</td><td><code>BRONZE</code> &rarr; <code>SILVER</code> &rarr; <code>GOLD</code></td></tr>
+              <tr><td>Agent</td><td><code>GOLD.HYDRAB_FLEET_AGENT</code> (Cortex Agent with semantic model)</td></tr>
+              <tr><td>Source Share</td><td>Inbound from <code>GXNIMKH.HV05860</code></td></tr>
+              <tr><td>Git Integration</td><td><code>HYDRAB_GIT_INTEGRATION</code> (github.com/nele-huvaere/hydrab-hol)</td></tr>
             </tbody>
           </table>
         </div>

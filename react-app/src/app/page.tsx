@@ -60,8 +60,8 @@ export default function OverviewDashboard() {
   if (loading) return <div className="loading">Loading dashboard...</div>
 
   return (
-    <div style={{ display: 'flex' }}>
-      <main className="container" style={{ marginRight: '380px' }}>
+    <div className="overview-layout">
+      <main className="overview-main">
         <h1 className="page-title">HydraB Fleet Intelligence</h1>
         <p className="page-subtitle">Unified view of fleet operations, sales pipeline, and vehicle telemetry</p>
 

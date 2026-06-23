@@ -5,7 +5,7 @@ export async function GET(
   { params }: { params: { z: string; x: string; y: string } }
 ) {
   const { z, x, y } = params
-  const tileUrl = `https://tile.openstreetmap.org/${z}/${x}/${y}`
+  const tileUrl = `https://tile.openstreetmap.org/${z}/${x}/${y}.png`
 
   try {
     const response = await fetch(tileUrl, {

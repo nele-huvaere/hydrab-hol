@@ -126,55 +126,36 @@ ALTER TABLE ODOS_EVENTS SET CHANGE_TRACKING = TRUE;
 ALTER TABLE DEFECT_EVENT SET CHANGE_TRACKING = TRUE;
 ```
 
-### Step 2 — Upload files to stages and create Notebook Project
+### Step 2 — Copy files from Git repo to stages, create Notebook Project
 
-Upload notebooks from the skill folder to the internal stage. The `file://` paths resolve relative to this skill folder:
+First, create the Git repository object and fetch (server-side, no local files needed):
 ```sql
-PUT 'file://notebooks/01_explore_data.ipynb' @PUBLIC.NOTEBOOK_STAGE/notebooks/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-```
-```sql
-PUT 'file://notebooks/02_build_silver_gold.ipynb' @PUBLIC.NOTEBOOK_STAGE/notebooks/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-```
-```sql
-PUT 'file://notebooks/03_cortex_agent.ipynb' @PUBLIC.NOTEBOOK_STAGE/notebooks/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-```
-```sql
-PUT 'file://notebooks/04_deploy_dashboard.ipynb' @PUBLIC.NOTEBOOK_STAGE/notebooks/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-```
-```sql
-PUT 'file://notebooks/05_dbt_production.ipynb' @PUBLIC.NOTEBOOK_STAGE/notebooks/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+CREATE OR REPLACE GIT REPOSITORY PUBLIC.HYDRAB_GIT_REPO
+  API_INTEGRATION = HYDRAB_GIT_INTEGRATION
+  ORIGIN = 'https://github.com/nele-huvaere/hydrab-hol.git';
 ```
 
-Upload dbt project:
 ```sql
-PUT 'file://dbt_project/dbt_project.yml' @PUBLIC.DBT_STAGE/hydrab_fleet/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+ALTER GIT REPOSITORY PUBLIC.HYDRAB_GIT_REPO FETCH;
 ```
+
+Copy notebook files from Git repo to internal stage:
 ```sql
-PUT 'file://dbt_project/profiles.yml' @PUBLIC.DBT_STAGE/hydrab_fleet/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+COPY FILES INTO @PUBLIC.NOTEBOOK_STAGE/notebooks/
+  FROM @PUBLIC.HYDRAB_GIT_REPO/branches/main/notebooks/
+  PATTERN = '.*\\.ipynb';
 ```
+
+Copy dbt project files from Git repo to internal stage:
 ```sql
-PUT 'file://dbt_project/models/schema.yml' @PUBLIC.DBT_STAGE/hydrab_fleet/models/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+COPY FILES INTO @PUBLIC.DBT_STAGE/hydrab_fleet/
+  FROM @PUBLIC.HYDRAB_GIT_REPO/branches/main/dbt_project/
+  PATTERN = '.*';
 ```
+
+Verify files were copied:
 ```sql
-PUT 'file://dbt_project/models/staging/stg_vehicles.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/staging/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-```
-```sql
-PUT 'file://dbt_project/models/staging/stg_telemetry.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/staging/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-```
-```sql
-PUT 'file://dbt_project/models/staging/stg_defects.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/staging/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-```
-```sql
-PUT 'file://dbt_project/models/staging/stg_deliveries.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/staging/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-```
-```sql
-PUT 'file://dbt_project/models/marts/dim_vehicle.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/marts/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-```
-```sql
-PUT 'file://dbt_project/models/marts/fct_fleet_health.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/marts/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-```
-```sql
-PUT 'file://dbt_project/models/marts/fct_delivery_pipeline.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/marts/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+LIST @PUBLIC.NOTEBOOK_STAGE/notebooks/;
 ```
 
 Create the Notebook Project Object:
@@ -236,21 +217,7 @@ EXECUTE NOTEBOOK PROJECT IDENTIFIER($HOL_DB || '.PUBLIC.HYDRAB_PROJECT')
 
 If one fails, report the error and continue with the next.
 
-### Step 4 — Create Git Workspace
-
-Create a Git-connected workspace so the user can explore notebooks interactively:
-
-```sql
-CREATE OR REPLACE GIT REPOSITORY IDENTIFIER($HOL_DB || '.PUBLIC.HYDRAB_GIT_REPO')
-  API_INTEGRATION = HYDRAB_GIT_INTEGRATION
-  ORIGIN = 'https://github.com/nele-huvaere/hydrab-hol.git';
-```
-
-```sql
-ALTER GIT REPOSITORY IDENTIFIER($HOL_DB || '.PUBLIC.HYDRAB_GIT_REPO') FETCH;
-```
-
-### Step 5 — Verify and report
+### Step 4 — Verify and report
 
 ```sql
 USE DATABASE IDENTIFIER($HOL_DB);

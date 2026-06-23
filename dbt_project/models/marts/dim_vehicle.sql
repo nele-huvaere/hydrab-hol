@@ -10,13 +10,13 @@ WITH latest_telemetry AS (
 SELECT
     v.vin,
     v.model,
-    v.customer,
+    v.customer_id,
     v.depot,
     v.status,
-    v.install_date,
+    v.delivery_status,
+    v.delivery_date,
     t.battery_soc AS latest_soc,
     t.speed_kmh AS latest_speed,
-    t.cell_temp AS latest_temp,
     t.latitude AS last_lat,
     t.longitude AS last_lng,
     t.event_time AS last_seen

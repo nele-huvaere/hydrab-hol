@@ -1,10 +1,10 @@
 -- Mart: Delivery pipeline summary
--- Groups deliveries by status for funnel visualization
+-- Groups deliveries by transport type for pipeline visualization
 
 SELECT
-    delivery_status,
-    COUNT(*) AS vehicle_count,
+    transport_type,
+    COUNT(*) AS delivery_count,
     COUNT(DISTINCT asset_id) AS unique_assets
 FROM {{ ref('stg_deliveries') }}
-GROUP BY delivery_status
-ORDER BY vehicle_count DESC
+GROUP BY transport_type
+ORDER BY delivery_count DESC

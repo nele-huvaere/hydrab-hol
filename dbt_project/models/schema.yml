@@ -35,15 +35,14 @@ models:
         description: "Battery state of charge (0-100%)"
 
   - name: stg_defects
-    description: "Cleaned defect events with type and severity"
+    description: "Cleaned defect events with type"
     columns:
-      - name: severity
+      - name: defect_id
         tests:
-          - accepted_values:
-              values: ['Critical', 'High', 'Medium', 'Low']
+          - not_null
 
   - name: stg_deliveries
-    description: "Delivery tracking records with status"
+    description: "Delivery tracking records"
 
   - name: dim_vehicle
     description: "Vehicle dimension enriched with latest telemetry"
@@ -57,4 +56,4 @@ models:
     description: "Fleet health metrics aggregated by depot"
 
   - name: fct_delivery_pipeline
-    description: "Delivery funnel grouped by status"
+    description: "Delivery pipeline grouped by transport type"

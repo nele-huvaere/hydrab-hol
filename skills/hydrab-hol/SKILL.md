@@ -11,6 +11,8 @@ tools:
 
 Activate this skill whenever the user wants to install or run the HydraB Power Hands-On Lab. Trigger phrases: "run the HydraB HOL", "install the HydraB lab", "set up HydraB", "$hydrab-hol", or simply uploading this folder.
 
+**IMPORTANT:** The user MUST be running as ACCOUNTADMIN. The very first SQL statement is `USE ROLE ACCOUNTADMIN` — if this fails, STOP immediately and tell the user: "Please switch your role to ACCOUNTADMIN in Snowsight (top-left role selector) and try again."
+
 ## What this skill produces (per attendee)
 
 | Object | Location | Notes |
@@ -25,7 +27,6 @@ Activate this skill whenever the user wants to install or run the HydraB Power H
 | Dashboard Service | `GOLD.DASHBOARD_SERVICE` | React app on SPCS |
 | dbt Project | `GOLD.HYDRAB_FLEET_DBT` | Production-grade transforms |
 | Notebook Project | `PUBLIC.HYDRAB_PROJECT` | All 5 notebooks executable |
-| Git Repository | `PUBLIC.HYDRAB_GIT_REPO` | Linked to GitHub for interactive workspace |
 
 No collisions between attendees — every object is inside their own database.
 
@@ -41,22 +42,27 @@ No collisions between attendees — every object is inside their own database.
 
 **DO NOT** attempt to create warehouses, compute pools, or integrations.
 
-**DO NOT** check prerequisites before starting. Just execute the SQL in order. If a statement fails, report the error verbatim and stop. Do not retry with modifications.
+**DO NOT** check prerequisites before starting. Just execute the SQL in order. If a statement fails, report the error verbatim and stop. Do not retry with modifications or alternative approaches.
+
+**DO NOT** skip steps or improvise alternative approaches. Follow the SQL exactly as written.
 
 ## Instructions (run in this exact order)
 
-Execute these 4 steps in order. Each step's SQL is provided below — run each statement via `snowflake_sql_execute`.
+Execute these 4 steps in order. Run each SQL statement via `snowflake_sql_execute` exactly as written. Do NOT check prerequisites, list warehouses, or verify existence of objects — just execute.
 
-### Step 1 — Create database, copy BRONZE data, create Git repo
-
-Creates the per-user database, schemas, copies data from shared BRONZE into native tables (required for change tracking), creates stages, and links the Git repository.
+### Step 1 — Set context and create database
 
 ```sql
 USE ROLE ACCOUNTADMIN;
 ```
+
+If the above fails, STOP. Tell the user to switch to ACCOUNTADMIN.
+
 ```sql
 USE WAREHOUSE HYDRAB_HOL_WH;
 ```
+
+If the above fails, STOP. Tell the user the admin setup hasn't been run yet.
 
 ```sql
 EXECUTE IMMEDIATE
@@ -82,24 +88,17 @@ $$;
 
 ```sql
 SET HOL_DB = (SELECT CONCAT('HYDRAB_HOL_', REGEXP_REPLACE(UPPER(CURRENT_USER()), '[^A-Z0-9_]', '_')));
+```
+
+```sql
 USE DATABASE IDENTIFIER($HOL_DB);
 ```
 
-Create the Git repository object (server-side fetch, no sandbox network access needed):
-```sql
-CREATE OR REPLACE GIT REPOSITORY PUBLIC.HYDRAB_GIT_REPO
-  API_INTEGRATION = HYDRAB_GIT_INTEGRATION
-  ORIGIN = 'https://github.com/nele-huvaere/hydrab-hol.git';
-```
-
-```sql
-ALTER GIT REPOSITORY PUBLIC.HYDRAB_GIT_REPO FETCH;
-```
-
-Copy BRONZE data into native tables (enables change tracking for Dynamic Tables):
 ```sql
 USE SCHEMA BRONZE;
 ```
+
+Copy BRONZE data into native tables (enables change tracking for Dynamic Tables):
 ```sql
 CREATE OR REPLACE TABLE ASSET AS SELECT * FROM BRONZE.SALESFORCE.ASSET;
 ```
@@ -127,28 +126,55 @@ ALTER TABLE ODOS_EVENTS SET CHANGE_TRACKING = TRUE;
 ALTER TABLE DEFECT_EVENT SET CHANGE_TRACKING = TRUE;
 ```
 
-### Step 2 — Copy files from Git repo to stages, create Notebook Project
+### Step 2 — Upload files to stages and create Notebook Project
 
-Copy notebook files from the Git repository stage to the internal notebook stage:
+Upload notebooks from the skill folder to the internal stage. The `file://` paths resolve relative to this skill folder:
 ```sql
-COPY FILES INTO @PUBLIC.NOTEBOOK_STAGE/notebooks/
-  FROM @PUBLIC.HYDRAB_GIT_REPO/branches/main/notebooks/
-  PATTERN = '.*\\.ipynb';
-```
-
-Copy dbt project files:
-```sql
-COPY FILES INTO @PUBLIC.DBT_STAGE/hydrab_fleet/
-  FROM @PUBLIC.HYDRAB_GIT_REPO/branches/main/dbt_project/
-  PATTERN = '.*\\.(yml|sql)';
-```
-
-Verify files were copied:
-```sql
-LIST @PUBLIC.NOTEBOOK_STAGE/notebooks/;
+PUT 'file://notebooks/01_explore_data.ipynb' @PUBLIC.NOTEBOOK_STAGE/notebooks/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
 ```
 ```sql
-LIST @PUBLIC.DBT_STAGE/hydrab_fleet/;
+PUT 'file://notebooks/02_build_silver_gold.ipynb' @PUBLIC.NOTEBOOK_STAGE/notebooks/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+```
+```sql
+PUT 'file://notebooks/03_cortex_agent.ipynb' @PUBLIC.NOTEBOOK_STAGE/notebooks/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+```
+```sql
+PUT 'file://notebooks/04_deploy_dashboard.ipynb' @PUBLIC.NOTEBOOK_STAGE/notebooks/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+```
+```sql
+PUT 'file://notebooks/05_dbt_production.ipynb' @PUBLIC.NOTEBOOK_STAGE/notebooks/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+```
+
+Upload dbt project:
+```sql
+PUT 'file://dbt_project/dbt_project.yml' @PUBLIC.DBT_STAGE/hydrab_fleet/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+```
+```sql
+PUT 'file://dbt_project/profiles.yml' @PUBLIC.DBT_STAGE/hydrab_fleet/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+```
+```sql
+PUT 'file://dbt_project/models/schema.yml' @PUBLIC.DBT_STAGE/hydrab_fleet/models/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+```
+```sql
+PUT 'file://dbt_project/models/staging/stg_vehicles.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/staging/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+```
+```sql
+PUT 'file://dbt_project/models/staging/stg_telemetry.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/staging/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+```
+```sql
+PUT 'file://dbt_project/models/staging/stg_defects.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/staging/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+```
+```sql
+PUT 'file://dbt_project/models/staging/stg_deliveries.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/staging/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+```
+```sql
+PUT 'file://dbt_project/models/marts/dim_vehicle.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/marts/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+```
+```sql
+PUT 'file://dbt_project/models/marts/fct_fleet_health.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/marts/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+```
+```sql
+PUT 'file://dbt_project/models/marts/fct_delivery_pipeline.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/marts/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
 ```
 
 Create the Notebook Project Object:
@@ -166,7 +192,7 @@ $$;
 
 ### Step 3 — Execute notebooks
 
-Run all 5 notebooks headlessly in container runtime. Execute each one separately, one at a time:
+Run all 5 notebooks headlessly. Execute each one separately, one at a time. Wait for each to complete before running the next:
 
 ```sql
 EXECUTE NOTEBOOK PROJECT IDENTIFIER($HOL_DB || '.PUBLIC.HYDRAB_PROJECT')
@@ -210,7 +236,21 @@ EXECUTE NOTEBOOK PROJECT IDENTIFIER($HOL_DB || '.PUBLIC.HYDRAB_PROJECT')
 
 If one fails, report the error and continue with the next.
 
-### Step 4 — Verify and report
+### Step 4 — Create Git Workspace
+
+Create a Git-connected workspace so the user can explore notebooks interactively:
+
+```sql
+CREATE OR REPLACE GIT REPOSITORY IDENTIFIER($HOL_DB || '.PUBLIC.HYDRAB_GIT_REPO')
+  API_INTEGRATION = HYDRAB_GIT_INTEGRATION
+  ORIGIN = 'https://github.com/nele-huvaere/hydrab-hol.git';
+```
+
+```sql
+ALTER GIT REPOSITORY IDENTIFIER($HOL_DB || '.PUBLIC.HYDRAB_GIT_REPO') FETCH;
+```
+
+### Step 5 — Verify and report
 
 ```sql
 USE DATABASE IDENTIFIER($HOL_DB);
@@ -250,20 +290,20 @@ After all steps complete, report to the user:
    - "Which vehicles have battery SOC below 20%?"
    - "What are the most common defect types?"
 4. **dbt Project** — Confirm HYDRAB_FLEET_DBT exists and ran successfully
-5. **Git Workspace** — Tell the user:
-
-> **Your Git-connected workspace is ready.**
-> Go to **Workspaces** → find the repository `HYDRAB_GIT_REPO` to explore notebooks interactively.
-> The notebooks, dbt project, and React app source are all available there.
+5. **Git Workspace** — Tell the user the Git repository is linked and they can explore notebooks in Workspaces:
+   - Go to **Workspaces** → select the `HYDRAB_GIT_REPO` repository
+   - Open any notebook from the `notebooks/` folder to explore interactively
 
 ## Hard constraints
 
 - Do not touch any database other than `HYDRAB_HOL_<USER>`.
 - `BRONZE` (shared database) is **read-only** — never write to it.
-- Use warehouse `HYDRAB_HOL_WH` everywhere.
+- Use warehouse `HYDRAB_HOL_WH` everywhere. Do NOT substitute another warehouse.
 - Always derive the user namespace from `CURRENT_USER()`.
 - Do not modify notebooks or files in this pack at runtime.
 - **Do not create warehouses, compute pools, or integrations.** They must already exist.
+- **Do not list warehouses or check what's available.** Just USE what the instructions say.
+- **Do not improvise.** If something fails, report and stop — do not try alternatives.
 
 ## Data Architecture
 
@@ -290,4 +330,3 @@ HYDRAB_HOL_<USER>.GOLD (Views + AI)
 - Image Repo: `HYDRAB_HOL_SHARED.PUBLIC.IMAGE_REPO` (pre-provisioned)
 - Warehouse: `HYDRAB_HOL_WH` (pre-provisioned)
 - Git Integration: `HYDRAB_GIT_INTEGRATION` (pre-provisioned)
-- Git Repo URL: `https://github.com/nele-huvaere/hydrab-hol.git`

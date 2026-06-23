@@ -3,22 +3,17 @@
 
 SELECT
     v.depot,
-    v.customer,
+    v.customer_id,
     COUNT(DISTINCT v.vin) AS total_vehicles,
     AVG(v.latest_soc) AS avg_battery_soc,
     COUNT_IF(v.latest_soc < 20) AS low_battery_vehicles,
-    MAX(v.latest_temp) AS max_temperature,
-    d.total_defects,
-    d.critical_defects,
-    d.avg_repair_cost
+    d.total_defect_events
 FROM {{ ref('dim_vehicle') }} v
 LEFT JOIN (
     SELECT
-        asset_id,
-        COUNT(*) AS total_defects,
-        COUNT_IF(severity = 'Critical') AS critical_defects,
-        AVG(repair_cost) AS avg_repair_cost
+        defect_id,
+        COUNT(*) AS total_defect_events
     FROM {{ ref('stg_defects') }}
-    GROUP BY asset_id
-) d ON v.vin = d.asset_id
-GROUP BY v.depot, v.customer, d.total_defects, d.critical_defects, d.avg_repair_cost
+    GROUP BY defect_id
+) d ON 1=1
+GROUP BY v.depot, v.customer_id, d.total_defect_events

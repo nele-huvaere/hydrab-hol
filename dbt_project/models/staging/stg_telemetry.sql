@@ -1,14 +1,25 @@
 -- Staging model: parse Odos telemetry JSON into typed columns
--- Source: BRONZE.ODOS_EVENTS (shared from Odos Telemetry API)
+-- Source: BRONZE.ODOS_EVENTS (copied from Odos Telemetry API)
+-- Note: RAW_JSON is VARCHAR, must use PARSE_JSON()
 
+WITH parsed AS (
+  SELECT
+    PARSE_JSON(RAW_JSON):vin::STRING AS vin,
+    PARSE_JSON(RAW_JSON):startTime::TIMESTAMP AS event_time,
+    PARSE_JSON(RAW_JSON):vehicleCustomer::STRING AS customer_name,
+    sig.value:name::STRING AS signal_name,
+    sig.value:values[0]:value::STRING AS reading_value
+  FROM {{ source('bronze', 'ODOS_EVENTS') }},
+    LATERAL FLATTEN(input => PARSE_JSON(RAW_JSON):signals) sig
+)
 SELECT
-    RAW:vin::STRING AS vin,
-    RAW:timestamp::TIMESTAMP AS event_time,
-    RAW:signals:battery_soc::FLOAT AS battery_soc,
-    RAW:signals:speed::FLOAT AS speed_kmh,
-    RAW:signals:battery_temperature::FLOAT AS cell_temp,
-    RAW:signals:latitude::FLOAT AS latitude,
-    RAW:signals:longitude::FLOAT AS longitude,
-    RAW:signals:odometer::FLOAT AS odometer_km,
-    RAW:signals:energy_consumed::FLOAT AS energy_kwh
-FROM {{ source('bronze', 'ODOS_EVENTS') }}
+  vin,
+  event_time,
+  customer_name,
+  MAX(CASE WHEN signal_name = 'LOCATION' THEN SPLIT_PART(reading_value, ';', 2)::FLOAT END) AS latitude,
+  MAX(CASE WHEN signal_name = 'LOCATION' THEN SPLIT_PART(reading_value, ';', 1)::FLOAT END) AS longitude,
+  MAX(CASE WHEN signal_name = 'MBMSStat1_DisplayedSOC_18FFB5F3_2' THEN reading_value::FLOAT END) AS battery_soc,
+  MAX(CASE WHEN signal_name ILIKE '%VehicleSpeed%' THEN reading_value::FLOAT END) AS speed_kmh,
+  MAX(CASE WHEN signal_name ILIKE '%TotalVehDistance%' THEN reading_value::FLOAT END) AS odometer_km
+FROM parsed
+GROUP BY vin, event_time, customer_name

@@ -194,32 +194,25 @@ $$;
 
 ### Step 3 - Execute notebooks
 
-Run all 5 notebooks headlessly. Execute each one separately, one at a time. Wait for each to complete before running the next:
+Run all 5 notebooks headlessly. Execute each one separately, one at a time. Wait for each to complete before running the next.
 
-Notebook 01 - try with EAI first, fall back to running without it:
+**Notebook 01** - First try with EAI (if it was created in Step 2b). If you get an error mentioning the integration, retry the same statement WITHOUT the `EXTERNAL_ACCESS_INTEGRATIONS` line:
 ```sql
-EXECUTE IMMEDIATE
-$$
-BEGIN
-    EXECUTE IMMEDIATE '
-        EXECUTE NOTEBOOK PROJECT ' || $HOL_DB || '.PUBLIC.HYDRAB_PROJECT
-          MAIN_FILE = ''notebooks/01_explore_data.ipynb''
-          COMPUTE_POOL = ''HYDRAB_HOL_POOL''
-          QUERY_WAREHOUSE = ''HYDRAB_HOL_WH''
-          RUNTIME = ''V2.2-CPU-PY3.12''
-          EXTERNAL_ACCESS_INTEGRATIONS = (''HYDRAB_EXTERNAL_API'')';
-    RETURN 'Notebook 01 completed with external access (live weather)';
-EXCEPTION
-    WHEN OTHER THEN
-        EXECUTE IMMEDIATE '
-            EXECUTE NOTEBOOK PROJECT ' || $HOL_DB || '.PUBLIC.HYDRAB_PROJECT
-              MAIN_FILE = ''notebooks/01_explore_data.ipynb''
-              COMPUTE_POOL = ''HYDRAB_HOL_POOL''
-              QUERY_WAREHOUSE = ''HYDRAB_HOL_WH''
-              RUNTIME = ''V2.2-CPU-PY3.12''';
-        RETURN 'Notebook 01 completed without external access (cached weather)';
-END;
-$$;
+EXECUTE NOTEBOOK PROJECT IDENTIFIER($HOL_DB || '.PUBLIC.HYDRAB_PROJECT')
+  MAIN_FILE = 'notebooks/01_explore_data.ipynb'
+  COMPUTE_POOL = 'HYDRAB_HOL_POOL'
+  QUERY_WAREHOUSE = 'HYDRAB_HOL_WH'
+  RUNTIME = 'V2.2-CPU-PY3.12'
+  EXTERNAL_ACCESS_INTEGRATIONS = ('HYDRAB_EXTERNAL_API');
+```
+
+If the above fails with an error about the integration not existing, run it without EAI:
+```sql
+EXECUTE NOTEBOOK PROJECT IDENTIFIER($HOL_DB || '.PUBLIC.HYDRAB_PROJECT')
+  MAIN_FILE = 'notebooks/01_explore_data.ipynb'
+  COMPUTE_POOL = 'HYDRAB_HOL_POOL'
+  QUERY_WAREHOUSE = 'HYDRAB_HOL_WH'
+  RUNTIME = 'V2.2-CPU-PY3.12';
 ```
 
 ```sql

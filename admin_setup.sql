@@ -1,6 +1,6 @@
 /*
 =============================================================================
-  HYDRAB HOL — ADMIN PRE-SETUP SCRIPT
+  HYDRAB HOL - ADMIN PRE-SETUP SCRIPT
   
   Run this ONCE as ACCOUNTADMIN before the Hands-On Lab.
   This creates all shared infrastructure that participants need.

@@ -1,17 +1,17 @@
 ---
 name: hydrab-hol
-description: "HydraB Power Vehicle 360 Hands-On Lab. Use when the user wants to run the HydraB lab, set up their environment, explore fleet data, build a Cortex Agent, deploy the dashboard, or run the dbt project. Triggers: hydrab, hol, hands-on lab, vehicle 360, fleet dashboard, electric bus."
+description: "Run the HydraB Power Vehicle 360 Hands-On Lab."
 tools:
   - snowflake_sql_execute
 ---
 
-# HydraB Power — Vehicle 360 Hands-On Lab
+# HydraB Power - Vehicle 360 Hands-On Lab
 
 ## When to use
 
 Activate this skill whenever the user wants to install or run the HydraB Power Hands-On Lab. Trigger phrases: "run the HydraB HOL", "install the HydraB lab", "set up HydraB", "$hydrab-hol", or simply uploading this folder.
 
-**IMPORTANT:** The user MUST be running as ACCOUNTADMIN. The very first SQL statement is `USE ROLE ACCOUNTADMIN` — if this fails, STOP immediately and tell the user: "Please switch your role to ACCOUNTADMIN in Snowsight (top-left role selector) and try again."
+**IMPORTANT:** The user MUST be running as ACCOUNTADMIN. The very first SQL statement is `USE ROLE ACCOUNTADMIN` - if this fails, STOP immediately and tell the user: "Please switch your role to ACCOUNTADMIN in Snowsight (top-left role selector) and try again."
 
 ## What this skill produces (per attendee)
 
@@ -28,9 +28,9 @@ Activate this skill whenever the user wants to install or run the HydraB Power H
 | dbt Project | `GOLD.HYDRAB_FLEET_DBT` | Production-grade transforms |
 | Notebook Project | `PUBLIC.HYDRAB_PROJECT` | All 5 notebooks executable |
 
-No collisions between attendees — every object is inside their own database.
+No collisions between attendees - every object is inside their own database.
 
-## CRITICAL INSTRUCTIONS — READ THESE FIRST
+## CRITICAL INSTRUCTIONS - READ THESE FIRST
 
 **ONLY use snowflake_sql_execute.** Every action is a SQL statement. No exceptions.
 
@@ -48,9 +48,9 @@ No collisions between attendees — every object is inside their own database.
 
 ## Instructions (run in this exact order)
 
-Execute these 4 steps in order. Run each SQL statement via `snowflake_sql_execute` exactly as written. Do NOT check prerequisites, list warehouses, or verify existence of objects — just execute.
+Execute these 4 steps in order. Run each SQL statement via `snowflake_sql_execute` exactly as written. Do NOT check prerequisites, list warehouses, or verify existence of objects - just execute.
 
-### Step 1 — Set context and create database
+### Step 1 - Set context and create database
 
 ```sql
 USE ROLE ACCOUNTADMIN;
@@ -126,7 +126,7 @@ ALTER TABLE ODOS_EVENTS SET CHANGE_TRACKING = TRUE;
 ALTER TABLE DEFECT_EVENT SET CHANGE_TRACKING = TRUE;
 ```
 
-### Step 2 — Copy files from Git repo to stages, create Notebook Project
+### Step 2 - Copy files from Git repo to stages, create Notebook Project
 
 First, create the Git repository object and fetch (server-side, no local files needed):
 ```sql
@@ -171,7 +171,7 @@ END;
 $$;
 ```
 
-### Step 3 — Execute notebooks
+### Step 3 - Execute notebooks
 
 Run all 5 notebooks headlessly. Execute each one separately, one at a time. Wait for each to complete before running the next:
 
@@ -218,7 +218,7 @@ EXECUTE NOTEBOOK PROJECT IDENTIFIER($HOL_DB || '.PUBLIC.HYDRAB_PROJECT')
 
 If one fails, report the error and continue with the next.
 
-### Step 4 — Verify and report
+### Step 4 - Verify and report
 
 ```sql
 USE DATABASE IDENTIFIER($HOL_DB);
@@ -251,27 +251,27 @@ SHOW DBT PROJECTS IN SCHEMA GOLD;
 
 After all steps complete, report to the user:
 
-1. **Data Pipeline** — Row counts for each layer
-2. **Dashboard** — The ingress_url from SHOW ENDPOINTS (tell user to open in browser)
-3. **Cortex Agent** — Confirm FLEET_AGENT exists, suggest sample questions:
+1. **Data Pipeline** - Row counts for each layer
+2. **Dashboard** - The ingress_url from SHOW ENDPOINTS (tell user to open in browser)
+3. **Cortex Agent** - Confirm FLEET_AGENT exists, suggest sample questions:
    - "How many vehicles does each customer operate?"
    - "Which vehicles have battery SOC below 20%?"
    - "What are the most common defect types?"
-4. **dbt Project** — Confirm HYDRAB_FLEET_DBT exists and ran successfully
-5. **Git Workspace** — Tell the user the Git repository is linked and they can explore notebooks in Workspaces:
+4. **dbt Project** - Confirm HYDRAB_FLEET_DBT exists and ran successfully
+5. **Git Workspace** - Tell the user the Git repository is linked and they can explore notebooks in Workspaces:
    - Go to **Workspaces** → select the `HYDRAB_GIT_REPO` repository
    - Open any notebook from the `notebooks/` folder to explore interactively
 
 ## Hard constraints
 
 - Do not touch any database other than `HYDRAB_HOL_<USER>`.
-- `BRONZE` (shared database) is **read-only** — never write to it.
+- `BRONZE` (shared database) is **read-only** - never write to it.
 - Use warehouse `HYDRAB_HOL_WH` everywhere. Do NOT substitute another warehouse.
 - Always derive the user namespace from `CURRENT_USER()`.
 - Do not modify notebooks or files in this pack at runtime.
 - **Do not create warehouses, compute pools, or integrations.** They must already exist.
 - **Do not list warehouses or check what's available.** Just USE what the instructions say.
-- **Do not improvise.** If something fails, report and stop — do not try alternatives.
+- **Do not improvise.** If something fails, report and stop - do not try alternatives.
 
 ## Data Architecture
 

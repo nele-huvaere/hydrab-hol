@@ -17,7 +17,7 @@ Activate this skill whenever the user wants to install or run the HydraB Power H
 |--------|----------|-------|
 | Database | `HYDRAB_HOL_<USER>` | One per attendee, isolated |
 | Schemas | `BRONZE`, `SILVER`, `GOLD`, `PUBLIC` | inside user DB |
-| BRONZE views | 5 views over shared data | Opportunity, Asset, Odos_Events, Defect_Event, Delivery_Tracking |
+| BRONZE tables | 5 native tables with change tracking | OPPORTUNITY, ASSET, ODOS_EVENTS, DEFECT_EVENT, DELIVERY_TRACKING |
 | SILVER Dynamic Tables | 3 auto-refreshing tables | Vehicles, Telemetry, Defects (5-min lag) |
 | GOLD views | 3 analytics views | DIM_VEHICLE, FCT_LATEST_TELEMETRY, FCT_DEFECT |
 | Semantic View | `GOLD.FLEET_SEMANTIC` | Business-friendly model over GOLD |
@@ -25,12 +25,13 @@ Activate this skill whenever the user wants to install or run the HydraB Power H
 | Dashboard Service | `GOLD.DASHBOARD_SERVICE` | React app on SPCS |
 | dbt Project | `GOLD.HYDRAB_FLEET_DBT` | Production-grade transforms |
 | Notebook Project | `PUBLIC.HYDRAB_PROJECT` | All 5 notebooks executable |
+| Git Repository | `PUBLIC.HYDRAB_GIT_REPO` | Linked to GitHub for interactive workspace |
 
 No collisions between attendees — every object is inside their own database.
 
-## CRITICAL INSTRUCTIONS
+## CRITICAL INSTRUCTIONS — READ THESE FIRST
 
-**ONLY use snowflake_sql_execute.** Every action is a SQL statement.
+**ONLY use snowflake_sql_execute.** Every action is a SQL statement. No exceptions.
 
 **DO NOT** create or edit notebooks, workspace files, .yaml files, or cortex_project folders.
 
@@ -38,20 +39,26 @@ No collisions between attendees — every object is inside their own database.
 
 **DO NOT** modify any source files in this pack.
 
-If a step fails, report the error verbatim. Do not retry with modifications.
+**DO NOT** attempt to create warehouses, compute pools, or integrations.
+
+**DO NOT** check prerequisites before starting. Just execute the SQL in order. If a statement fails, report the error verbatim and stop. Do not retry with modifications.
 
 ## Instructions (run in this exact order)
 
-Execute these 4 scripts in order. Each script's SQL is provided below — run each statement via `snowflake_sql_execute`.
+Execute these 4 steps in order. Each step's SQL is provided below — run each statement via `snowflake_sql_execute`.
 
-### Step 1 — Run 01_setup.sql
+### Step 1 — Create database, copy BRONZE data, create Git repo
 
-Creates the per-user database, schemas, BRONZE views, and stages.
+Creates the per-user database, schemas, copies data from shared BRONZE into native tables (required for change tracking), creates stages, and links the Git repository.
 
 ```sql
 USE ROLE ACCOUNTADMIN;
+```
+```sql
 USE WAREHOUSE HYDRAB_HOL_WH;
+```
 
+```sql
 EXECUTE IMMEDIATE
 $$
 DECLARE
@@ -71,46 +78,80 @@ BEGIN
     RETURN 'Setup complete: ' || :hol_db;
 END;
 $$;
-
-SET HOL_DB = (SELECT CONCAT('HYDRAB_HOL_', REGEXP_REPLACE(UPPER(CURRENT_USER()), '[^A-Z0-9_]', '_')));
-USE DATABASE IDENTIFIER($HOL_DB);
-USE SCHEMA BRONZE;
-
-CREATE OR REPLACE VIEW OPPORTUNITY AS SELECT * FROM BRONZE.SALESFORCE.OPPORTUNITY;
-CREATE OR REPLACE VIEW ASSET AS SELECT * FROM BRONZE.SALESFORCE.ASSET;
-CREATE OR REPLACE VIEW ODOS_EVENTS AS SELECT * FROM BRONZE.ODOS.EVENTS;
-CREATE OR REPLACE VIEW DEFECT_EVENT AS SELECT * FROM BRONZE.SALESFORCE.DEFECT_EVENT__C;
-CREATE OR REPLACE VIEW DELIVERY_TRACKING AS SELECT * FROM BRONZE.SALESFORCE.DELIVERY_TRACKING__C;
 ```
-
-NOTE: If the shared `BRONZE` database doesn't exist, tell the user: "The shared BRONZE database isn't available. Ask the lab facilitator to run admin_setup.sql first."
-
-### Step 2 — Run 02_deploy_notebooks.sql
-
-PUTs notebook and dbt files to stages, creates the Notebook Project Object.
 
 ```sql
+SET HOL_DB = (SELECT CONCAT('HYDRAB_HOL_', REGEXP_REPLACE(UPPER(CURRENT_USER()), '[^A-Z0-9_]', '_')));
 USE DATABASE IDENTIFIER($HOL_DB);
-
-PUT 'file://notebooks/01_explore_data.ipynb' @PUBLIC.NOTEBOOK_STAGE/notebooks/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-PUT 'file://notebooks/02_build_silver_gold.ipynb' @PUBLIC.NOTEBOOK_STAGE/notebooks/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-PUT 'file://notebooks/03_cortex_agent.ipynb' @PUBLIC.NOTEBOOK_STAGE/notebooks/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-PUT 'file://notebooks/04_deploy_dashboard.ipynb' @PUBLIC.NOTEBOOK_STAGE/notebooks/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-PUT 'file://notebooks/05_dbt_production.ipynb' @PUBLIC.NOTEBOOK_STAGE/notebooks/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-
-PUT 'file://dbt_project/dbt_project.yml' @PUBLIC.DBT_STAGE/hydrab_fleet/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-PUT 'file://dbt_project/profiles.yml' @PUBLIC.DBT_STAGE/hydrab_fleet/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-PUT 'file://dbt_project/models/schema.yml' @PUBLIC.DBT_STAGE/hydrab_fleet/models/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-PUT 'file://dbt_project/models/staging/stg_vehicles.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/staging/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-PUT 'file://dbt_project/models/staging/stg_telemetry.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/staging/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-PUT 'file://dbt_project/models/staging/stg_defects.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/staging/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-PUT 'file://dbt_project/models/staging/stg_deliveries.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/staging/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-PUT 'file://dbt_project/models/marts/dim_vehicle.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/marts/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-PUT 'file://dbt_project/models/marts/fct_fleet_health.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/marts/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-PUT 'file://dbt_project/models/marts/fct_delivery_pipeline.sql' @PUBLIC.DBT_STAGE/hydrab_fleet/models/marts/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
 ```
 
-Then create the NPO:
+Create the Git repository object (server-side fetch, no sandbox network access needed):
+```sql
+CREATE OR REPLACE GIT REPOSITORY PUBLIC.HYDRAB_GIT_REPO
+  API_INTEGRATION = HYDRAB_GIT_INTEGRATION
+  ORIGIN = 'https://github.com/nele-huvaere/hydrab-hol.git';
+```
+
+```sql
+ALTER GIT REPOSITORY PUBLIC.HYDRAB_GIT_REPO FETCH;
+```
+
+Copy BRONZE data into native tables (enables change tracking for Dynamic Tables):
+```sql
+USE SCHEMA BRONZE;
+```
+```sql
+CREATE OR REPLACE TABLE ASSET AS SELECT * FROM BRONZE.SALESFORCE.ASSET;
+```
+```sql
+CREATE OR REPLACE TABLE OPPORTUNITY AS SELECT * FROM BRONZE.SALESFORCE.OPPORTUNITY;
+```
+```sql
+CREATE OR REPLACE TABLE ODOS_EVENTS AS SELECT * FROM BRONZE.ODOS.EVENTS;
+```
+```sql
+CREATE OR REPLACE TABLE DEFECT_EVENT AS SELECT * FROM BRONZE.SALESFORCE.DEFECT_EVENT__C;
+```
+```sql
+CREATE OR REPLACE TABLE DELIVERY_TRACKING AS SELECT * FROM BRONZE.SALESFORCE.DELIVERY_TRACKING__C;
+```
+
+Enable change tracking:
+```sql
+ALTER TABLE ASSET SET CHANGE_TRACKING = TRUE;
+```
+```sql
+ALTER TABLE ODOS_EVENTS SET CHANGE_TRACKING = TRUE;
+```
+```sql
+ALTER TABLE DEFECT_EVENT SET CHANGE_TRACKING = TRUE;
+```
+
+### Step 2 — Copy files from Git repo to stages, create Notebook Project
+
+Copy notebook files from the Git repository stage to the internal notebook stage:
+```sql
+COPY FILES INTO @PUBLIC.NOTEBOOK_STAGE/notebooks/
+  FROM @PUBLIC.HYDRAB_GIT_REPO/branches/main/notebooks/
+  PATTERN = '.*\\.ipynb';
+```
+
+Copy dbt project files:
+```sql
+COPY FILES INTO @PUBLIC.DBT_STAGE/hydrab_fleet/
+  FROM @PUBLIC.HYDRAB_GIT_REPO/branches/main/dbt_project/
+  PATTERN = '.*\\.(yml|sql)';
+```
+
+Verify files were copied:
+```sql
+LIST @PUBLIC.NOTEBOOK_STAGE/notebooks/;
+```
+```sql
+LIST @PUBLIC.DBT_STAGE/hydrab_fleet/;
+```
+
+Create the Notebook Project Object:
 ```sql
 EXECUTE IMMEDIATE
 $$
@@ -125,7 +166,7 @@ $$;
 
 ### Step 3 — Execute notebooks
 
-Run all 5 notebooks headlessly in container runtime:
+Run all 5 notebooks headlessly in container runtime. Execute each one separately, one at a time:
 
 ```sql
 EXECUTE NOTEBOOK PROJECT IDENTIFIER($HOL_DB || '.PUBLIC.HYDRAB_PROJECT')
@@ -133,25 +174,33 @@ EXECUTE NOTEBOOK PROJECT IDENTIFIER($HOL_DB || '.PUBLIC.HYDRAB_PROJECT')
   COMPUTE_POOL = 'HYDRAB_HOL_POOL'
   QUERY_WAREHOUSE = 'HYDRAB_HOL_WH'
   RUNTIME = 'V2.2-CPU-PY3.12';
+```
 
+```sql
 EXECUTE NOTEBOOK PROJECT IDENTIFIER($HOL_DB || '.PUBLIC.HYDRAB_PROJECT')
   MAIN_FILE = 'notebooks/02_build_silver_gold.ipynb'
   COMPUTE_POOL = 'HYDRAB_HOL_POOL'
   QUERY_WAREHOUSE = 'HYDRAB_HOL_WH'
   RUNTIME = 'V2.2-CPU-PY3.12';
+```
 
+```sql
 EXECUTE NOTEBOOK PROJECT IDENTIFIER($HOL_DB || '.PUBLIC.HYDRAB_PROJECT')
   MAIN_FILE = 'notebooks/03_cortex_agent.ipynb'
   COMPUTE_POOL = 'HYDRAB_HOL_POOL'
   QUERY_WAREHOUSE = 'HYDRAB_HOL_WH'
   RUNTIME = 'V2.2-CPU-PY3.12';
+```
 
+```sql
 EXECUTE NOTEBOOK PROJECT IDENTIFIER($HOL_DB || '.PUBLIC.HYDRAB_PROJECT')
   MAIN_FILE = 'notebooks/04_deploy_dashboard.ipynb'
   COMPUTE_POOL = 'HYDRAB_HOL_POOL'
   QUERY_WAREHOUSE = 'HYDRAB_HOL_WH'
   RUNTIME = 'V2.2-CPU-PY3.12';
+```
 
+```sql
 EXECUTE NOTEBOOK PROJECT IDENTIFIER($HOL_DB || '.PUBLIC.HYDRAB_PROJECT')
   MAIN_FILE = 'notebooks/05_dbt_production.ipynb'
   COMPUTE_POOL = 'HYDRAB_HOL_POOL'
@@ -159,33 +208,40 @@ EXECUTE NOTEBOOK PROJECT IDENTIFIER($HOL_DB || '.PUBLIC.HYDRAB_PROJECT')
   RUNTIME = 'V2.2-CPU-PY3.12';
 ```
 
-Run each EXECUTE NOTEBOOK PROJECT statement one at a time. If one fails, report the error and continue with the next.
+If one fails, report the error and continue with the next.
 
 ### Step 4 — Verify and report
 
 ```sql
 USE DATABASE IDENTIFIER($HOL_DB);
+```
 
--- Row counts
+```sql
 SELECT 'BRONZE.ASSET' as tbl, COUNT(*) as rows FROM BRONZE.ASSET
 UNION ALL SELECT 'SILVER.VEHICLES_SILVER', COUNT(*) FROM SILVER.VEHICLES_SILVER
 UNION ALL SELECT 'GOLD.DIM_VEHICLE', COUNT(*) FROM GOLD.DIM_VEHICLE
 UNION ALL SELECT 'GOLD.FCT_LATEST_TELEMETRY', COUNT(*) FROM GOLD.FCT_LATEST_TELEMETRY;
+```
 
--- Dashboard URL
+```sql
 SHOW ENDPOINTS IN SERVICE GOLD.DASHBOARD_SERVICE;
+```
 
--- Semantic View + Agent
+```sql
 SHOW SEMANTIC VIEWS IN SCHEMA GOLD;
-SHOW AGENTS IN SCHEMA GOLD;
+```
 
--- dbt Project
+```sql
+SHOW AGENTS IN SCHEMA GOLD;
+```
+
+```sql
 SHOW DBT PROJECTS IN SCHEMA GOLD;
 ```
 
 ## Final Report
 
-After all steps, report to the user:
+After all steps complete, report to the user:
 
 1. **Data Pipeline** — Row counts for each layer
 2. **Dashboard** — The ingress_url from SHOW ENDPOINTS (tell user to open in browser)
@@ -194,23 +250,11 @@ After all steps, report to the user:
    - "Which vehicles have battery SOC below 20%?"
    - "What are the most common defect types?"
 4. **dbt Project** — Confirm HYDRAB_FLEET_DBT exists and ran successfully
-5. **Interactive Notebooks** — Tell the user:
+5. **Git Workspace** — Tell the user:
 
-> **To explore the notebooks interactively:**
-> 1. Go to **Workspaces** → **+ Add new** → **From Git repository**
-> 2. URL: `https://github.com/nele-huvaere/hydrab-hol.git`
-> 3. API Integration: **HYDRAB_GIT_INTEGRATION**
-> 4. Authentication: **Public repository** → **Create**
-
-## Phase 2: Extend with CoCo Desktop
-
-After the lab, users open the `react-app/` folder in Cortex Code Desktop:
-
-1. **Add pages** — Delivery Tracking, Defects heatmap
-2. **Connect live queries** — Replace static data with Snowflake queries
-3. **Add Agent chat** — Embed the Cortex Agent in the dashboard
-4. **Improve the map** — Color by SOC, add route history
-5. **Rebuild and deploy** — `docker build`, push, `ALTER SERVICE`
+> **Your Git-connected workspace is ready.**
+> Go to **Workspaces** → find the repository `HYDRAB_GIT_REPO` to explore notebooks interactively.
+> The notebooks, dbt project, and React app source are all available there.
 
 ## Hard constraints
 
@@ -219,18 +263,19 @@ After the lab, users open the `react-app/` folder in Cortex Code Desktop:
 - Use warehouse `HYDRAB_HOL_WH` everywhere.
 - Always derive the user namespace from `CURRENT_USER()`.
 - Do not modify notebooks or files in this pack at runtime.
+- **Do not create warehouses, compute pools, or integrations.** They must already exist.
 
 ## Data Architecture
 
 ```
-BRONZE (Shared, read-only)
-├── SALESFORCE: OPPORTUNITY, ASSET, DEFECT_EVENT__C, DELIVERY_TRACKING__C
-└── ODOS: EVENTS (raw telemetry JSON)
+HYDRAB_HOL_<USER>.BRONZE (native tables, change tracking enabled)
+├── ASSET, OPPORTUNITY, ODOS_EVENTS, DEFECT_EVENT, DELIVERY_TRACKING
+│   (copied from shared BRONZE database)
 
-SILVER (Dynamic Tables, 5-min lag)
+HYDRAB_HOL_<USER>.SILVER (Dynamic Tables, 5-min lag)
 ├── VEHICLES_SILVER, TELEMETRY_SILVER, DEFECTS_SILVER
 
-GOLD (Views + AI)
+HYDRAB_HOL_<USER>.GOLD (Views + AI)
 ├── DIM_VEHICLE, FCT_LATEST_TELEMETRY, FCT_DEFECT
 ├── FLEET_SEMANTIC (Semantic View)
 ├── FLEET_AGENT (Cortex Agent)
@@ -240,7 +285,9 @@ GOLD (Views + AI)
 ## Account Details
 
 - Account: `sfseeurope-nhuvaere_azure1`
-- BRONZE Share from: `GXNIMKH.HV05860`
-- Compute Pool: `HYDRAB_HOL_POOL`
-- Image Repo: `HYDRAB_HOL_SHARED.PUBLIC.IMAGE_REPO`
-- Git Integration: `HYDRAB_GIT_INTEGRATION`
+- BRONZE source: shared database `BRONZE` (from `GXNIMKH.HV05860`)
+- Compute Pool: `HYDRAB_HOL_POOL` (pre-provisioned)
+- Image Repo: `HYDRAB_HOL_SHARED.PUBLIC.IMAGE_REPO` (pre-provisioned)
+- Warehouse: `HYDRAB_HOL_WH` (pre-provisioned)
+- Git Integration: `HYDRAB_GIT_INTEGRATION` (pre-provisioned)
+- Git Repo URL: `https://github.com/nele-huvaere/hydrab-hol.git`

@@ -171,16 +171,55 @@ END;
 $$;
 ```
 
+### Step 2b - Try to create External Access Integration (optional, may not be available on trial)
+
+```sql
+EXECUTE IMMEDIATE
+$$
+BEGIN
+    EXECUTE IMMEDIATE '
+        CREATE NETWORK RULE IF NOT EXISTS HYDRAB_HOL_SHARED.PUBLIC.HYDRAB_OPEN_METEO_RULE
+          MODE = EGRESS TYPE = HOST_PORT VALUE_LIST = (''api.open-meteo.com'')';
+    EXECUTE IMMEDIATE '
+        CREATE OR REPLACE EXTERNAL ACCESS INTEGRATION HYDRAB_EXTERNAL_API
+          ALLOWED_NETWORK_RULES = (HYDRAB_HOL_SHARED.PUBLIC.HYDRAB_OPEN_METEO_RULE)
+          ENABLED = TRUE';
+    RETURN 'External Access Integration created - live weather data will be available';
+EXCEPTION
+    WHEN OTHER THEN
+        RETURN 'External Access Integration not available (trial limitation) - notebook will use cached weather data';
+END;
+$$;
+```
+
 ### Step 3 - Execute notebooks
 
 Run all 5 notebooks headlessly. Execute each one separately, one at a time. Wait for each to complete before running the next:
 
+Notebook 01 - try with EAI first, fall back to running without it:
 ```sql
-EXECUTE NOTEBOOK PROJECT IDENTIFIER($HOL_DB || '.PUBLIC.HYDRAB_PROJECT')
-  MAIN_FILE = 'notebooks/01_explore_data.ipynb'
-  COMPUTE_POOL = 'HYDRAB_HOL_POOL'
-  QUERY_WAREHOUSE = 'HYDRAB_HOL_WH'
-  RUNTIME = 'V2.2-CPU-PY3.12';
+EXECUTE IMMEDIATE
+$$
+BEGIN
+    EXECUTE IMMEDIATE '
+        EXECUTE NOTEBOOK PROJECT ' || $HOL_DB || '.PUBLIC.HYDRAB_PROJECT
+          MAIN_FILE = ''notebooks/01_explore_data.ipynb''
+          COMPUTE_POOL = ''HYDRAB_HOL_POOL''
+          QUERY_WAREHOUSE = ''HYDRAB_HOL_WH''
+          RUNTIME = ''V2.2-CPU-PY3.12''
+          EXTERNAL_ACCESS_INTEGRATIONS = (''HYDRAB_EXTERNAL_API'')';
+    RETURN 'Notebook 01 completed with external access (live weather)';
+EXCEPTION
+    WHEN OTHER THEN
+        EXECUTE IMMEDIATE '
+            EXECUTE NOTEBOOK PROJECT ' || $HOL_DB || '.PUBLIC.HYDRAB_PROJECT
+              MAIN_FILE = ''notebooks/01_explore_data.ipynb''
+              COMPUTE_POOL = ''HYDRAB_HOL_POOL''
+              QUERY_WAREHOUSE = ''HYDRAB_HOL_WH''
+              RUNTIME = ''V2.2-CPU-PY3.12''';
+        RETURN 'Notebook 01 completed without external access (cached weather)';
+END;
+$$;
 ```
 
 ```sql
@@ -268,7 +307,8 @@ After all steps complete, report to the user:
 - Use warehouse `HYDRAB_HOL_WH` everywhere. Do NOT substitute another warehouse.
 - Always derive the user namespace from `CURRENT_USER()`.
 - Do not modify notebooks or files in this pack at runtime.
-- **Do not create warehouses, compute pools, or integrations.** They must already exist.
+- **Do not create warehouses or compute pools.** They must already exist.
+- The External Access Integration is created in Step 2b (if supported). Do not retry if it fails.
 - **Do not list warehouses or check what's available.** Just USE what the instructions say.
 - **Do not improvise.** If something fails, report and stop - do not try alternatives.
 

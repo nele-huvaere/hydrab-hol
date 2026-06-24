@@ -3,8 +3,8 @@ hydrab_fleet:
   outputs:
     prod:
       type: snowflake
-      account: '{{ env_var("SNOWFLAKE_ACCOUNT") }}'
-      user: '{{ env_var("SNOWFLAKE_USER") }}'
+      account: '{{ env_var("SNOWFLAKE_ACCOUNT", "placeholder") }}'
+      user: '{{ env_var("SNOWFLAKE_USER", "placeholder") }}'
       role: ACCOUNTADMIN
       database: '{{ env_var("SNOWFLAKE_DATABASE") }}'
       schema: GOLD

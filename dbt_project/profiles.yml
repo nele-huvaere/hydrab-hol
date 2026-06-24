@@ -3,10 +3,10 @@ hydrab_fleet:
   outputs:
     prod:
       type: snowflake
-      account: '{{ env_var("SNOWFLAKE_ACCOUNT", "not_needed") }}'
-      user: '{{ env_var("SNOWFLAKE_USER", "not_needed") }}'
+      account: '{{ env_var("SNOWFLAKE_ACCOUNT") }}'
+      user: '{{ env_var("SNOWFLAKE_USER") }}'
       role: ACCOUNTADMIN
-      database: '{{ env_var("SNOWFLAKE_DATABASE", "HYDRAB_HOL") }}'
+      database: '{{ env_var("SNOWFLAKE_DATABASE") }}'
       schema: GOLD
       warehouse: HYDRAB_HOL_WH
       threads: 4

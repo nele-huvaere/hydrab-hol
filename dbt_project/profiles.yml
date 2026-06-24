@@ -6,7 +6,7 @@ hydrab_fleet:
       account: '{{ env_var("SNOWFLAKE_ACCOUNT", "placeholder") }}'
       user: '{{ env_var("SNOWFLAKE_USER", "placeholder") }}'
       role: ACCOUNTADMIN
-      database: '{{ env_var("SNOWFLAKE_DATABASE") }}'
+      database: '{{ env_var("SNOWFLAKE_DATABASE", "HYDRAB_HOL") }}'
       schema: GOLD
       warehouse: HYDRAB_HOL_WH
       threads: 4
